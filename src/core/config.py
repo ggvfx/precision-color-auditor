@@ -22,6 +22,8 @@ class Settings:
         tolerance_threshold (float): Delta E (dE2000) limit before flagging a fail.
         sample_size (int): The square size (in pixels) for mean patch sampling.
         output_dir (Path): Default location for reports and CDL exports.
+        supported_charts (Dict): Map of chart keys to Florence-2 prompt labels.
+        active_chart_type (str): The current chart type selected for detection.
     """
     app_root: Path = Path(__file__).parent.parent.parent
     
@@ -35,6 +37,16 @@ class Settings:
     
     # Export Settings
     output_dir: Path = field(init=False)
+
+    # Chart Detection Settings
+    # These labels are passed directly to the Florence-2 phrase grounding logic.
+    supported_charts: Dict[str, str] = field(default_factory=lambda: {
+        "Macbeth 24-Patch": "color checker chart",
+        "Greyscale 11-Step": "greyscale step wedge",
+        "Greyscale 21-Step": "greyscale exposure chart",
+        "Neutral Density Wedge": "neutral density filter chart"
+    })
+    active_chart_type: str = "Macbeth 24-Patch"
 
     def __post_init__(self):
         """Initialize dynamic paths and ensure directories exist."""
@@ -58,6 +70,10 @@ class Settings:
             self.current_ocio_path = path
         else:
             raise FileNotFoundError(f"Invalid OCIO config path: {custom_path}")
+        
+    def get_active_prompt(self) -> str:
+        """Returns the Florence-2 prompt for the currently active chart."""
+        return self.supported_charts.get(self.active_chart_type, "color checker chart")
 
 
 # Global Singleton Instance

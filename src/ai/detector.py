@@ -1,7 +1,7 @@
 """
 Precision Color Auditor - AI-Driven Chart Localization
-Wraps Florence-2 for automated Macbeth and Greyscale chart detection.
-Maps relative ROI coordinates for high-precision pixel sampling.
+Wraps Florence-2 for automated detection of various calibration charts.
+Uses the global settings for dynamic, config-driven search prompts.
 """
 
 import os
@@ -50,7 +50,7 @@ class ChartDetector:
 
     def detect_chart_roi(self, image_array: np.ndarray) -> dict:
         """
-        Locates the Macbeth or Greyscale chart ROI in a 'noisy' environment.
+        Locates the active chart type defined in the global settings.
         
         Args:
             image_array: The image as a float32 NumPy array.
@@ -58,14 +58,21 @@ class ChartDetector:
         Returns:
             dict: Bounding box coordinates for the detected chart.
         """
-        # Convert to 8-bit for the vision model's processing
+        # 1. Convert 32-bit linear float to 8-bit PIL for the vision model
         pil_img = Image.fromarray((np.clip(image_array, 0, 1) * 255).astype(np.uint8))
         
-        prompt = "<OD>" 
-        text_input = "color checker chart"
+        # 2. Retrieve the active prompt from the global config
+        prompt = "<CAPTION_TO_PHRASE_GROUNDING>" 
+        text_input = settings.get_active_prompt()
         
-        inputs = self.processor(text=prompt + text_input, images=pil_img, return_tensors="pt").to(self.device)
+        # 3. Prepare inputs for local inference
+        inputs = self.processor(
+            text=prompt + text_input, 
+            images=pil_img, 
+            return_tensors="pt"
+        ).to(self.device)
         
+        # 4. Generate the detection coordinates
         with torch.no_grad():
             generated_ids = self.model.generate(
                 input_ids=inputs["input_ids"],
@@ -76,10 +83,12 @@ class ChartDetector:
             )
         
         results = self.processor.batch_decode(generated_ids, skip_special_tokens=False)[0]
+        
+        # 5. Map internal tokens back to image pixel coordinates
         parsed_answer = self.processor.post_process_generation(
             results, 
             task=prompt, 
             image_size=(pil_img.width, pil_img.height)
         )
 
-        return parsed_answer # Provides the Region of Interest (ROI)
+        return parsed_answer
