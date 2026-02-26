@@ -208,7 +208,12 @@ __marimo__/
 
 # --- Precision Color Auditor Specifics ---
 
+# AI Models (Florence-2 Weights)
+# We ignore the entire models directory to keep the repo lean.
+src/resources/models/**
+
 # Image Test Assets
+# Ignore large source images that shouldn't be in version control.
 *.exr
 *.dpx
 *.cr2
@@ -216,14 +221,21 @@ __marimo__/
 *.dng
 *.mov
 *.mp4
+*.tif
+*.tiff
+*.jpg
+*.jpeg
+*.png
 
 # Color Metadata & Outputs
+# Ignore generated fixes and logs.
 *.cube
 *.cdl
 *.cc
 *.csv
+exports/
 
 # Local OCIO Configs
+# We ignore root configs but force-include the bundled ACES resources.
 *.ocio
-config.ocio
 !src/resources/ocio/**
