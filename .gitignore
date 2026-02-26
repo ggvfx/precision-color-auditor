@@ -205,3 +205,25 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# --- Precision Color Auditor Specifics ---
+
+# Image Test Assets
+*.exr
+*.dpx
+*.cr2
+*.arw
+*.dng
+*.mov
+*.mp4
+
+# Color Metadata & Outputs
+*.cube
+*.cdl
+*.cc
+*.csv
+
+# Local OCIO Configs
+*.ocio
+config.ocio
+!src/resources/ocio/**
