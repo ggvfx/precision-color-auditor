@@ -2,20 +2,26 @@
 PySide6>=6.6.0
 
 # Color Science & Engine
+# Note: Ensure the ACES 1.3 config is in src/resources/ocio/ [cite: 6]
 opencolorio>=2.3.0
 colour-science>=0.4.4
 
 # Image Ingestion & Processing
+# OIIO is required for EXR/DPX signal integrity 
+oiio-python>=2.4.0
 opencv-python>=4.8.0
 opencv-contrib-python>=4.8.0
 numpy>=1.24.0
 rawpy>=0.19.0
 
-# AI / Vision Model (Florence-2)
+# AI / Vision Model (Florence-2) 
+# Note: Users should run the CUDA-specific install for performance 
 transformers>=4.38.0
 torch>=2.2.0
+torchvision>=0.17.0
 einops>=0.7.0
 timm>=0.9.0
+huggingface-hub>=0.20.0
 
-# Data & Reporting
+# Data & Reporting [cite: 12, 18]
 pandas>=2.1.0
