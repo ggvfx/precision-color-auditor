@@ -31,17 +31,19 @@ class ChartDetector:
         self._load_model()
 
     def _load_model(self):
-        import torch
         from safetensors.torch import load_file
-        from transformers import AutoConfig, AutoModel, Florence2Processor
+        from transformers import AutoConfig, AutoModel, BartTokenizer
+        from src.resources.models.florence2.processing_florence2 import Florence2Processor
+        import os
 
+        # 1. Weights
         state_dict = load_file(os.path.join(self.model_path, "model.safetensors"))
         shared = state_dict["language_model.model.shared.weight"]
-        
         state_dict["language_model.model.encoder.embed_tokens.weight"] = shared
         state_dict["language_model.model.decoder.embed_tokens.weight"] = shared
         state_dict["language_model.lm_head.weight"] = shared
 
+        # 2. Config
         config = AutoConfig.from_pretrained(self.model_path, trust_remote_code=True)
         config.vocab_size = 51289
         config.text_config.vocab_size = 51289
@@ -49,7 +51,19 @@ class ChartDetector:
         self.model = AutoModel.from_config(config, trust_remote_code=True)
         self.model.load_state_dict(state_dict, strict=False)
         self.model.to(self.device).eval()
-        self.processor = Florence2Processor.from_pretrained(self.model_path, local_files_only=True)
+
+        # 3. The Bypass: Manually instantiate Tokenizer and Processor
+        # This prevents the 'Auto' logic from looking for non-existent attributes
+        tokenizer = BartTokenizer.from_pretrained(self.model_path, use_fast=False)
+        
+        # Load the processor class manually
+        from transformers import CLIPImageProcessor
+        image_processor = CLIPImageProcessor.from_pretrained(self.model_path)
+        
+        self.processor = Florence2Processor(
+            image_processor=image_processor,
+            tokenizer=tokenizer
+        )
 
     def detect_chart_roi(self, image_array: np.ndarray) -> dict:
         """
@@ -84,10 +98,15 @@ class ChartDetector:
                 pixel_values=inputs["pixel_values"],
                 max_new_tokens=1024,
                 do_sample=False,
-                num_beams=3
+                num_beams=3,
+                use_cache=False
             )
         
         results = self.processor.batch_decode(generated_ids, skip_special_tokens=False)[0]
+
+        # --- DEBUG START ---
+        print(f"\n[DEBUG] Raw Model Output: '{results}'")
+        # --- DEBUG END ---
         
         # 5. Map internal tokens back to image pixel coordinates
         parsed_answer = self.processor.post_process_generation(
@@ -95,5 +114,9 @@ class ChartDetector:
             task=prompt, 
             image_size=(pil_img.width, pil_img.height)
         )
+
+        # --- DEBUG START ---
+        print(f"[DEBUG] Parsed Answer: {parsed_answer}\n")
+        # --- DEBUG END ---
 
         return parsed_answer
