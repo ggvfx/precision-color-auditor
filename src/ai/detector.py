@@ -31,22 +31,25 @@ class ChartDetector:
         self._load_model()
 
     def _load_model(self):
-        """Initializes Florence-2 from the local filesystem."""
-        try:
-            # We load from self.model_path instead of a web-based ID
-            self.model = AutoModelForCausalLM.from_pretrained(
-                self.model_path, 
-                trust_remote_code=True
-            ).to(self.device).eval()
-            
-            self.processor = AutoProcessor.from_pretrained(
-                self.model_path, 
-                trust_remote_code=True
-            )
-        except Exception as e:
-            raise RuntimeError(
-                f"Local AI Model Load Failed. Ensure weights exist in {self.model_path}. Error: {e}"
-            )
+        import torch
+        from safetensors.torch import load_file
+        from transformers import AutoConfig, AutoModel, Florence2Processor
+
+        state_dict = load_file(os.path.join(self.model_path, "model.safetensors"))
+        shared = state_dict["language_model.model.shared.weight"]
+        
+        state_dict["language_model.model.encoder.embed_tokens.weight"] = shared
+        state_dict["language_model.model.decoder.embed_tokens.weight"] = shared
+        state_dict["language_model.lm_head.weight"] = shared
+
+        config = AutoConfig.from_pretrained(self.model_path, trust_remote_code=True)
+        config.vocab_size = 51289
+        config.text_config.vocab_size = 51289
+        
+        self.model = AutoModel.from_config(config, trust_remote_code=True)
+        self.model.load_state_dict(state_dict, strict=False)
+        self.model.to(self.device).eval()
+        self.processor = Florence2Processor.from_pretrained(self.model_path, local_files_only=True)
 
     def detect_chart_roi(self, image_array: np.ndarray) -> dict:
         """
@@ -61,9 +64,9 @@ class ChartDetector:
         # 1. Convert 32-bit linear float to 8-bit PIL for the vision model
         pil_img = Image.fromarray((np.clip(image_array, 0, 1) * 255).astype(np.uint8))
         
-        # 2. Retrieve the active prompt from the global config
+        # 2. Discovery prompt
         prompt = "<CAPTION_TO_PHRASE_GROUNDING>" 
-        text_input = settings.get_active_prompt()
+        text_input = "color calibration chart"
         
         # 3. Prepare inputs for local inference
         inputs = self.processor(
@@ -71,6 +74,8 @@ class ChartDetector:
             images=pil_img, 
             return_tensors="pt"
         ).to(self.device)
+
+        inputs["pixel_values"] = inputs["pixel_values"].to(self.model.dtype)
         
         # 4. Generate the detection coordinates
         with torch.no_grad():

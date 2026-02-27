@@ -1,7 +1,7 @@
 """
-Precision Color Auditor - Unified Image Ingestion Layer
-Handles high-precision loading of cinema and RAW formats using OpenImageIO and Rawpy.
-Normalizes all incoming signals to 32-bit float arrays for deterministic auditing.
+Precision Color Auditor - Unified Image Ingest Engine
+Handles high-precision loading of cinema (EXR, DPX) and RAW formats.
+Normalizes all incoming signals to a 32-bit linear float32 buffer.
 """
 
 import os
@@ -9,6 +9,8 @@ import numpy as np
 import OpenImageIO as oiio
 import rawpy
 from typing import Tuple, Dict
+
+from core.config import settings
 
 
 class ImageIngestor:
@@ -40,6 +42,9 @@ class ImageIngestor:
             # Final safety check for float32 bit-depth
             if pixels.dtype != np.float32:
                 pixels = pixels.astype(np.float32)
+
+            # Perform signal validation before returning
+            ImageIngestor.validate_signal_range(pixels)
                 
             return pixels, meta
             
@@ -68,6 +73,7 @@ class ImageIngestor:
             "channels": spec.nchannels,
             "file_format": spec.format_name(),
             "colorspace_hint": spec.get_string_attribute("oiio:ColorSpace", "Unknown"),
+            "is_raw": False,
             "raw_metadata": {attr.name: attr.value for attr in spec.extra_attribs}
         }
 
@@ -100,6 +106,7 @@ class ImageIngestor:
                 "channels": 3,
                 "file_format": "Camera RAW",
                 "colorspace_hint": "Raw",
+                "is_raw": True,
                 "raw_metadata": {
                     "iso": getattr(raw, 'iso', 'Unknown'),
                     "shutter": getattr(raw, 'shutter', 'Unknown'),
