@@ -1,122 +1,62 @@
-"""
-Precision Color Auditor - AI-Driven Chart Localization
-Wraps Florence-2 for automated detection of various calibration charts.
-Uses the global settings for dynamic, config-driven search prompts.
-"""
-
-import os
-import numpy as np
 import torch
+import numpy as np
 from PIL import Image
 from transformers import AutoProcessor, AutoModelForCausalLM
-
 from core.config import settings
 
 class ChartDetector:
-    """
-    Handles local AI inference to locate color references within an image.
-    """
-
     def __init__(self):
-        # Local inference ensures standalone integrity 
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        
-        # Point to the local directory where weights were hydrated
-        self.model_path = os.path.join(
-            settings.app_root, "src", "resources", "models", "florence2"
-        )
-        
+        self.model_id = "microsoft/Florence-2-base"
         self.model = None
         self.processor = None
         self._load_model()
 
     def _load_model(self):
-        from safetensors.torch import load_file
-        from transformers import AutoConfig, AutoModel, BartTokenizer
-        from src.resources.models.florence2.processing_florence2 import Florence2Processor
-        import os
+        print(f"[DEBUG] Loading {self.model_id} from cache...")
+        # We keep trust_remote_code=True to use the official MS scripts you just downloaded
+        self.model = AutoModelForCausalLM.from_pretrained(
+            self.model_id,
+            trust_remote_code=True,
+            torch_dtype=torch.float16 if self.device == "cuda" else torch.float32
+        ).to(self.device).eval()
 
-        # 1. Weights
-        state_dict = load_file(os.path.join(self.model_path, "model.safetensors"))
-        shared = state_dict["language_model.model.shared.weight"]
-        state_dict["language_model.model.encoder.embed_tokens.weight"] = shared
-        state_dict["language_model.model.decoder.embed_tokens.weight"] = shared
-        state_dict["language_model.lm_head.weight"] = shared
-
-        # 2. Config
-        config = AutoConfig.from_pretrained(self.model_path, trust_remote_code=True)
-        config.vocab_size = 51289
-        config.text_config.vocab_size = 51289
-        
-        self.model = AutoModel.from_config(config, trust_remote_code=True)
-        self.model.load_state_dict(state_dict, strict=False)
-        self.model.to(self.device).eval()
-
-        # 3. The Bypass: Manually instantiate Tokenizer and Processor
-        # This prevents the 'Auto' logic from looking for non-existent attributes
-        tokenizer = BartTokenizer.from_pretrained(self.model_path, use_fast=False)
-        
-        # Load the processor class manually
-        from transformers import CLIPImageProcessor
-        image_processor = CLIPImageProcessor.from_pretrained(self.model_path)
-        
-        self.processor = Florence2Processor(
-            image_processor=image_processor,
-            tokenizer=tokenizer
+        self.processor = AutoProcessor.from_pretrained(
+            self.model_id, 
+            trust_remote_code=True
         )
+        print(f"[SUCCESS] Florence-2 ready on {self.device}")
 
     def detect_chart_roi(self, image_array: np.ndarray) -> dict:
-        """
-        Locates the active chart type defined in the global settings.
-        
-        Args:
-            image_array: The image as a float32 NumPy array.
-            
-        Returns:
-            dict: Bounding box coordinates for the detected chart.
-        """
-        # 1. Convert 32-bit linear float to 8-bit PIL for the vision model
+        # 1. Image prep
         pil_img = Image.fromarray((np.clip(image_array, 0, 1) * 255).astype(np.uint8))
         
-        # 2. Discovery prompt
-        prompt = "<CAPTION_TO_PHRASE_GROUNDING>" 
+        # 2. Set the task to Grounding
+        task_tag = "<CAPTION_TO_PHRASE_GROUNDING>"
         text_input = "color calibration chart"
+        full_prompt = f"{task_tag}{text_input}"
         
-        # 3. Prepare inputs for local inference
-        inputs = self.processor(
-            text=prompt + text_input, 
-            images=pil_img, 
-            return_tensors="pt"
-        ).to(self.device)
+        inputs = self.processor(text=full_prompt, images=pil_img, return_tensors="pt").to(self.device)
+        if self.device == "cuda":
+            inputs["pixel_values"] = inputs["pixel_values"].to(torch.float16)
 
-        inputs["pixel_values"] = inputs["pixel_values"].to(self.model.dtype)
-        
-        # 4. Generate the detection coordinates
+        # 3. Inference
         with torch.no_grad():
             generated_ids = self.model.generate(
                 input_ids=inputs["input_ids"],
                 pixel_values=inputs["pixel_values"],
-                max_new_tokens=1024,
-                do_sample=False,
-                num_beams=3,
-                use_cache=False
+                max_new_tokens=128,
+                num_beams=3
             )
         
         results = self.processor.batch_decode(generated_ids, skip_special_tokens=False)[0]
-
-        # --- DEBUG START ---
-        print(f"\n[DEBUG] Raw Model Output: '{results}'")
-        # --- DEBUG END ---
         
-        # 5. Map internal tokens back to image pixel coordinates
+        # 4. Parse coordinates
         parsed_answer = self.processor.post_process_generation(
             results, 
-            task=prompt, 
+            task=task_tag, 
             image_size=(pil_img.width, pil_img.height)
         )
-
-        # --- DEBUG START ---
-        print(f"[DEBUG] Parsed Answer: {parsed_answer}\n")
-        # --- DEBUG END ---
-
+        
+        print(f"[DEBUG] Found: {parsed_answer}")
         return parsed_answer

@@ -17,6 +17,7 @@ This project uses a locally patched version of the Florence-2 model. Due to seve
 | `config.json` | Global | Set `vocab_size` & `text_config.vocab_size` to **51289** | Aligned architecture with the expanded 51289 weight matrix. |
 | `processing_florence2.py` | 90 | Wrapped `tokenizer.additional_special_tokens` in `getattr()` | Fixed `AttributeError: RobertaTokenizer has no attribute additional_special_tokens`. |
 | `detector.py` | `detect_chart_roi` | Added `use_cache=False` to `model.generate()` | Fixed `TypeError: 'EncoderDecoderCache' object is not subscriptable`. |
+| detector.py | _load_model | Set hf_logging to ERROR | Fixed console hang/deadlock caused by deprecated AttentionMaskConverter warning. |
 
 ## 2. Implementation & Deployment Strategy
 
