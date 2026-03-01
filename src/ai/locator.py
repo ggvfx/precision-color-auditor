@@ -1,21 +1,12 @@
 """
-Locator Module - Macro Vision Pass
+Locator Module - Diagnostic Pass
 ----------------------------------
-Responsibility: Environment-aware object detection.
-
-This module performs the 'Macro' pass of the pipeline. It scans the full, 
-high-resolution image to find the physical boundary of a color chart or 
-gray card amidst environmental noise (background, hands, lighting fixtures).
-
-Output: A rectified (flat) 1200x800 image buffer and the 4 corner 
-coordinates used for the transformation.
+Updated to strip out warping and rectangle-fitting.
+Returns raw AI detection points on the original image buffer.
 """
 
 import cv2
 import numpy as np
-from PIL import Image
-import torch
-from .utils import prep_for_pil
 from core.config import settings
 
 class ChartLocator:
@@ -24,69 +15,34 @@ class ChartLocator:
 
     def locate(self, image_buffer: np.ndarray, manual_corners: np.ndarray = None) -> tuple[np.ndarray, np.ndarray]:
         """
-        Finds the chart and returns (rectified_buffer, corners_array).
-        If manual_corners is provided, AI detection is skipped.
+        Diagnostic Version: Returns the ORIGINAL image and RAW points.
+        Bypasses warping and rectification logic.
         """
+        # 1. Get dimensions from the input image (Crucial fix)
+        height, width = image_buffer.shape[:2]
         
         # --- BRANCH 1: Manual Override ---
         if manual_corners is not None:
-            # Ensure they are the correct shape (4, 2) and float32
-            corners = manual_corners.astype(np.float32)
-            rectified_image = self.rectify(image_buffer, corners)
-            return rectified_image, corners
+            return image_buffer, manual_corners.astype(np.float32)
 
         # --- BRANCH 2: AI Detection ---
-        # 1. Ask the engine to find the chart polygon
+        # 2. Ask the engine to find the chart polygon
         roi_result = self.engine.detect_chart_roi(image_buffer)
         
-        # 2. Extract and scale the points
-        norm_points = self.engine.get_absolute_bbox(roi_result)
-        if len(norm_points) == 0:
+        # 3. Extract raw absolute pixel coordinates (Passing width/height)
+        poly_points = self.engine.extract_polygons(roi_result, width, height)
+        
+        if poly_points is None or len(poly_points) == 0:
+            print("[WARNING] Locator: Engine returned no points.")
             return None, None
 
-        h, w = image_buffer.shape[:2]
-        # Scale 0-1 coordinates to actual pixel values
-        poly_points = norm_points * [w, h]
-        
-        # Check if we actually got points back
-        if len(poly_points) == 0:
-            print("[WARNING] Locator: Engine returned no polygon points.")
-            return None, None
-            
-        # 3. Use OpenCV to find the 4 tightest corners
-        rect = cv2.minAreaRect(poly_points.astype(np.float32))
-        box = cv2.boxPoints(rect)
-        
-        # Sort points: Top-Left, Top-Right, Bottom-Right, Bottom-Left
-        # This prevents the "flipped/rotated" crop issue
-        def order_points(pts):
-            rect = np.zeros((4, 2), dtype="float32")
-            s = pts.sum(axis=1)
-            rect[0] = pts[np.argmin(s)] # Top-Left
-            rect[2] = pts[np.argmax(s)] # Bottom-Right
-            diff = np.diff(pts, axis=1)
-            rect[1] = pts[np.argmin(diff)] # Top-Right
-            rect[3] = pts[np.argmax(diff)] # Bottom-Left
-            return rect
-
-        corners = order_points(box)
-
-        # 4. Rectify (Warp)
-        rectified_image = self.rectify(image_buffer, corners)
-        
-        return rectified_image, corners
+        # --- DIAGNOSTIC STRIP-BACK ---
+        # We return the original image buffer and the raw scaled points.
+        return image_buffer, poly_points
     
     def rectify(self, image_buffer: np.ndarray, corners: np.ndarray) -> np.ndarray:
-        """Warps the input image to a flat 1200x800 buffer based on 4 corners."""
-        # Standard destination coordinates [TL, TR, BR, BL]
-        dst_w, dst_h = settings.rectified_size
-        dst_points = np.array([
-            [0, 0], [dst_w, 0], [dst_w, dst_h], [0, dst_h]
-        ], dtype=np.float32)
-
-        # Calculate the transformation matrix
-        matrix = cv2.getPerspectiveTransform(corners.astype(np.float32), dst_points)
-        
-        # Perform the warp
-        rectified = cv2.warpPerspective(image_buffer, matrix, (dst_w, dst_h))
-        return rectified
+        """
+        DEPRECATED for Diagnostic Pass. 
+        Kept as a stub to avoid breaking sampler imports.
+        """
+        return image_buffer

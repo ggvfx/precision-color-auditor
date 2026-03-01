@@ -1,0 +1,41 @@
+src
+├─ ai
+│  ├─ __init__.py
+│  ├─ __pycache__
+│  │  ├─ __init__.cpython.311.pyc
+│  │  ├─ detector.cpython.311.pyc
+│  │  ├─ engine.cpython.311.pyc
+│  │  ├─ locator.cpython.311.pyc
+│  │  ├─ sampler.cpython.311.pyc
+│  │  ├─ topology.cpython.311.pyc
+│  │  └─ utils.cpython.311.pyc
+│  ├─ engine.py
+│  ├─ locator.py
+│  ├─ sampler.py
+│  ├─ topology.py
+│  └─ utils.py
+├─ core
+│  ├─ __init__.py
+│  ├─ __pycache__
+│  │  ├─ __init__.cpython.311.pyc
+│  │  ├─ config.cpython.311.pyc
+│  │  ├─ ingest.cpython.311.pyc
+│  │  └─ models.cpython.311.pyc
+│  ├─ auditor.py
+│  ├─ color_engine.py
+│  ├─ config.py
+│  ├─ ingest.py
+│  └─ models.py
+├─ exporters
+│  ├─ __init__.py
+│  ├─ cdl_writer.py
+│  ├─ lut_writer.py
+│  └─ report_generator.py
+├─ main.py
+├─ resources
+│  ├─ ocio
+│  │  └─ config.ocio
+│  └─ studio-config-v1.0.0_aces-v1.3_ocio-v2.1.ocio
+└─ ui
+   ├─ __init__.py
+   └─ main_window.py

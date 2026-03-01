@@ -20,7 +20,7 @@ def mock_load_jpg(path: str):
         return np.array(img).astype(np.float32) / 255.0
 
 def run_integration_test(image_path: str, label: str):
-    print(f"\nTESTING: {label}")
+    print(f"\n--- DIAGNOSTIC RUN: {label} ---")
     
     try:
         # 1. Load Pixels
@@ -28,43 +28,38 @@ def run_integration_test(image_path: str, label: str):
         print(f"[SUCCESS] Buffer Loaded: {pixels.shape}")
 
         # 2. Setup AI
-        # We still need the base detector (Florence-2) to pass into our modules
         detector = ChartDetector()
         
-        # 3. Sample (The New Multi-Pass Way)
-        # Sampler now handles Locator -> Topology -> Grid Math internally
+        # 3. Diagnostic "Sample" 
+        # In this stripped-back version, this only performs detection and saves a QC image
         sampler = PatchSampler(detector)
-        patches, crop, corners = sampler.sample_all(pixels, image_path)
+        patches, full_res_image, raw_points = sampler.sample_all(pixels, image_path)
         
-        if crop is not None:
-            print(f"[SUCCESS] Discovered {len(patches)} patches.")
-            print(f"[QC] Alignment proof should be in: {settings.output_dir}")
+        # 4. Visual Validation Feedback
+        if raw_points is not None and len(raw_points) > 0:
+            print(f"[SUCCESS] AI found {len(raw_points)} vertices.")
+            print(f"[ACTION REQUIRED] Check the overlay image in: {settings.output_dir}")
+            print(f"[DEBUG] Raw Coordinates:\n{raw_points}")
         else:
-            print("[FAILURE] Chart not found in image.")
-
-        # 4. Signature Match
-        sig = settings.get_signature(len(patches))
-        if sig:
-            print(f"[MATCH] Identified as: {sig['label']}")
-        else:
-            print(f"[UNRECOGNIZED] Discovered {len(patches)} patches. Layout check required.")
+            print("[FAILURE] Vision model could not identify the chart.")
 
     except Exception as e:
         import traceback
-        traceback.print_exc() # Better for debugging these new modules
+        traceback.print_exc()
         print(f"[FAILURE] {e}")
+
+if __name__ == "__main__":
+    # Ensure the export directory exists
+    settings.output_dir.mkdir(parents=True, exist_ok=True)
 
 if __name__ == "__main__":
     #Color charts
     run_integration_test("D:/_repos/precision-color-auditor/test_assets/macbeth.jpg", "Macbeth")
-    #run_integration_test("D:/_repos/precision-color-auditor/test_assets/blackMacbeth.jpeg", "BlackMacbeth")
+    run_integration_test("D:/_repos/precision-color-auditor/test_assets/blackMacbeth.jpeg", "BlackMacbeth")
     run_integration_test("D:/_repos/precision-color-auditor/test_assets/pinkMacbeth.jpg", "PinkMacbeth")
-    #run_integration_test("D:/_repos/precision-color-auditor/test_assets/KodakColor.jpg", "KodakColor")
-    #run_integration_test("D:/_repos/precision-color-auditor/test_assets/MacbethBalls.jpg", "MacbethBalls")
-    #run_integration_test("D:/_repos/precision-color-auditor/test_assets/miniMacbeth.jpg", "MacbethMini")
-    #run_integration_test("D:/_repos/precision-color-auditor/test_assets/scifiMacbeth.jpg", "MacbethScifi")
-
-    #Grey cards
-    #run_integration_test("D:/_repos/precision-color-auditor/test_assets/KodakGray.jpg", "Kodak Gray Card Plus")
-    #run_integration_test("D:/_repos/precision-color-auditor/test_assets/greycardboy.jpg", "Gray Card Boy")
-    #run_integration_test("D:/_repos/precision-color-auditor/test_assets/Greycardphoto.jpg", "Gray Card Photo")
+    run_integration_test("D:/_repos/precision-color-auditor/test_assets/KodakColor.jpg", "KodakColor")
+    run_integration_test("D:/_repos/precision-color-auditor/test_assets/MacbethBalls.jpg", "MacbethBalls")
+    run_integration_test("D:/_repos/precision-color-auditor/test_assets/miniMacbeth.jpg", "MacbethMini")
+    run_integration_test("D:/_repos/precision-color-auditor/test_assets/scifiMacbeth.jpg", "MacbethScifi")
+    run_integration_test("D:/_repos/precision-color-auditor/test_assets/macbeth_ref.jpg", "MacbethRef")
+    run_integration_test("D:/_repos/precision-color-auditor/test_assets/macbeth_ref2.jpg", "MacbethRefWide")

@@ -64,10 +64,7 @@ class Settings:
         
         # Paths for Official Outputs
         self.output_dir = self.app_root / "exports"
-        self.crops_dir = self.output_dir / "rectified_crops"
-        
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        self.crops_dir.mkdir(parents=True, exist_ok=True)
 
     def update_ocio_config(self, custom_path: str):
         """
