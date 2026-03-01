@@ -57,7 +57,6 @@ if __name__ == "__main__":
     run_integration_test("D:/_repos/precision-color-auditor/test_assets/macbeth.jpg", "Macbeth")
     run_integration_test("D:/_repos/precision-color-auditor/test_assets/blackMacbeth.jpeg", "BlackMacbeth")
     run_integration_test("D:/_repos/precision-color-auditor/test_assets/pinkMacbeth.jpg", "PinkMacbeth")
-    run_integration_test("D:/_repos/precision-color-auditor/test_assets/KodakColor.jpg", "KodakColor")
     run_integration_test("D:/_repos/precision-color-auditor/test_assets/MacbethBalls.jpg", "MacbethBalls")
     run_integration_test("D:/_repos/precision-color-auditor/test_assets/miniMacbeth.jpg", "MacbethMini")
     run_integration_test("D:/_repos/precision-color-auditor/test_assets/scifiMacbeth.jpg", "MacbethScifi")

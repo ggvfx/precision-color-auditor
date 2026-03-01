@@ -35,9 +35,11 @@ class ChartDetector:
         else:
             pil_img = Image.fromarray((np.clip(image_array, 0, 1) * 255).astype(np.uint8))
         
-        # USE GROUNDING TO ALLOW TEXT
+        # Prompt
+        current_template = settings.get_current_template()
+        description = current_template.get("detection_prompt", "")
+
         task_tag = "<CAPTION_TO_PHRASE_GROUNDING>"
-        description = "macbeth color calibration chart, 6x4 rectangular color samples surrounded by black borders"
         full_prompt = f"{task_tag}{description}"
         
         inputs = self.processor(text=full_prompt, images=pil_img, return_tensors="pt").to(self.device)

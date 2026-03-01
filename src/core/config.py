@@ -8,6 +8,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Dict, Tuple
+import numpy as np
 
 
 @dataclass
@@ -41,15 +42,28 @@ class Settings:
     rectified_size: Tuple[int, int] = (1200, 800) 
     active_chart_type: str = "macbeth_24"
 
-    # Template Library: Macbeth-only for current development phase
+    # Template Library: Now including AI Grounding Prompts
     chart_templates: Dict[str, Dict] = field(default_factory=lambda: {
         "macbeth_24": {
             "label": "Macbeth 24-Patch",
-            "grid": (6, 4), # Cols, Rows
+            "grid": (6, 4), 
             "neutral_indices": list(range(18, 24)),
-            "target_space": "ACEScg"
+            "target_space": "ACEScg",
+            # The AI "Search Term" for this specific chart:
+            "detection_prompt": "macbeth color calibration chart, 6x4 rectangular color samples surrounded by black borders"
+        },
+        "gray_scale_12": {
+            "label": "12-Step Gray Scale",
+            "grid": (12, 1),
+            "neutral_indices": list(range(0, 12)),
+            "target_space": "ACEScg",
+            "detection_prompt": "linear grayscale calibration chart. horizontal rectangular steps. black borders."
         }
     })
+
+    # Manual Draw Override Settings
+    use_manual_locator: bool = False
+    manual_corners: Optional[np.ndarray] = None
 
     # New Official Output Directory
     crops_dir: Path = field(init=False)
