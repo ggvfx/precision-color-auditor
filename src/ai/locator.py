@@ -39,19 +39,37 @@ class ChartLocator:
         # 1. Ask the engine to find the chart polygon
         roi_result = self.engine.detect_chart_roi(image_buffer)
         
-        # 2. Extract the polygon points
-        poly_points = self.engine.get_absolute_bbox(roi_result)
+        # 2. Extract and scale the points
+        norm_points = self.engine.get_absolute_bbox(roi_result)
+        if len(norm_points) == 0:
+            return None, None
+
+        h, w = image_buffer.shape[:2]
+        # Scale 0-1 coordinates to actual pixel values
+        poly_points = norm_points * [w, h]
         
         # Check if we actually got points back
         if len(poly_points) == 0:
             print("[WARNING] Locator: Engine returned no polygon points.")
             return None, None
             
-        # 3. Use OpenCV to find the 4 tightest corners of the polygon
-        # This is what handles the rotation/tilt of the chart
+        # 3. Use OpenCV to find the 4 tightest corners
         rect = cv2.minAreaRect(poly_points.astype(np.float32))
-        box = cv2.boxPoints(rect) 
-        corners = np.array(box, dtype=np.float32)
+        box = cv2.boxPoints(rect)
+        
+        # Sort points: Top-Left, Top-Right, Bottom-Right, Bottom-Left
+        # This prevents the "flipped/rotated" crop issue
+        def order_points(pts):
+            rect = np.zeros((4, 2), dtype="float32")
+            s = pts.sum(axis=1)
+            rect[0] = pts[np.argmin(s)] # Top-Left
+            rect[2] = pts[np.argmax(s)] # Bottom-Right
+            diff = np.diff(pts, axis=1)
+            rect[1] = pts[np.argmin(diff)] # Top-Right
+            rect[3] = pts[np.argmax(diff)] # Bottom-Left
+            return rect
+
+        corners = order_points(box)
 
         # 4. Rectify (Warp)
         rectified_image = self.rectify(image_buffer, corners)

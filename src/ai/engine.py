@@ -1,3 +1,4 @@
+import re
 import torch
 import numpy as np
 from PIL import Image
@@ -68,28 +69,38 @@ class ChartDetector:
         return parsed_answer
 
     def get_absolute_bbox(self, roi_result) -> list:
-        """Extracts the polygon and converts it to 4 corners."""
-        key = "<POLYGON_SEGMENTATION>"
-        
-        # 1. Handle the list wrapping
-        if isinstance(roi_result, list) and len(roi_result) > 0:
+        """Extracts coordinates from raw Florence-2 location tokens."""
+        if isinstance(roi_result, list):
             roi_result = roi_result[0]
-            
-        # 2. Safety check: Ensure roi_result is actually a dictionary
-        if not isinstance(roi_result, dict):
-            print(f"[ERROR] Engine: roi_result is {type(roi_result)}, expected dict.")
-            return []
 
-        # 3. Extract the polygon data - Look in EVERY key
-        for k, v in roi_result.items():
-            if isinstance(v, dict) and 'polygons' in v:
-                polygons = v['polygons']
-                if polygons and len(polygons) > 0:
-                    # Florence returns points as [[[x1, y1, x2, y2...]]]
-                    # Flatten the first polygon found and reshape to (N, 2)
-                    poly = np.array(polygons[0]).reshape(-1, 2)
-                    return poly
+        # 1. Get the raw string from the dictionary
+        raw_str = ""
+        for val in roi_result.values():
+            if isinstance(val, str):
+                raw_str = val
+                break
+
+        # 2. Use Regex to find all <loc_###> patterns
+        tokens = re.findall(r'<loc_(\d+)>', raw_str)
         
-        # If the loop finishes without returning, we found nothing
-        print(f"[DEBUG] Engine: No 'polygons' found in any key. Keys present: {list(roi_result.keys())}")
+        if len(tokens) >= 4:
+            # Florence-2 uses a 1000x1000 coordinate system
+            # Format is usually [ymin, xmin, ymax, xmax]
+            coords = [int(t) / 1000.0 for t in tokens[:4]]
+            
+            # We need the original image dimensions to scale back
+            # These should be available from your engine's state or passed in
+            # For now, let's create the 4 corners of the bounding box
+            ymin, xmin, ymax, xmax = coords
+            
+            # Convert to 4 corners for the Locator: [top-left, top-right, bottom-right, bottom-left]
+            # We multiply by image size in the Locator, so we return normalized 0-1 points here
+            poly = np.array([
+                [xmin, ymin],
+                [xmax, ymin],
+                [xmax, ymax],
+                [xmin, ymax]
+            ])
+            return poly
+
         return []
