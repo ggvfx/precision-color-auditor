@@ -18,13 +18,13 @@ class ColorPatch:
         name (str): The common name of the patch (e.g., 'Neutral 5', 'Dark Skin').
         observed_rgb (np.ndarray): The mean RGB values sampled from the image (Scene-Linear).
         target_rgb (np.ndarray): The mathematical 'Ideal' RGB values for the specific color space.
-        coordinates (Tuple[int, int, int, int]): The ROI bounding box (x, y, w, h).
+        local_center (Tuple[int, int]): The (x, y) center coordinate relative to the rectified crop.
         index (int): The patch index (0-23 for Macbeth, 0-5 for Greyscale).
     """
     name: str
     observed_rgb: np.ndarray
     target_rgb: np.ndarray
-    coordinates: Tuple[int, int, int, int]
+    local_center: Tuple[int, int]
     index: int
 
     def __post_init__(self):
@@ -45,6 +45,8 @@ class AuditResult:
         delta_e_mean (float): The average Delta E (dE2000) across all sampled patches.
         delta_e_max (float): The highest recorded Delta E error in the set.
         is_pass (bool): Whether the audit falls within the user-defined tolerance.
+        corners (Optional[np.ndarray]): The 4 corner coordinates [TL, TR, BR, BL] found by the AI or user.
+        rectified_path (Optional[str]): The file path to the saved verification crop.
         
         # ASC-CDL Neutralization Values
         slope (np.ndarray): RGB Slope values (default [1.0, 1.0, 1.0]).
@@ -56,6 +58,8 @@ class AuditResult:
         timestamp (str): ISO formatted string of the audit execution time.
     """
     file_path: str
+    corners: Optional[np.ndarray] = None 
+    rectified_path: Optional[str] = None
     delta_e_mean: float = 0.0
     delta_e_max: float = 0.0
     is_pass: bool = False
@@ -72,3 +76,7 @@ class AuditResult:
         """Returns a formatted string of the CDL SOP values for logging."""
         return (f"Slope: {self.slope} | Offset: {self.offset} | "
                 f"Power: {self.power} | Sat: {self.sat}")
+    
+    def get_neutral_patches(self) -> List[ColorPatch]:
+        """Returns only the patches identified as neutral (Macbeth indices 18-23)."""
+        return [p for p in self.patches if 18 <= p.index <= 23]

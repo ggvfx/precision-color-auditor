@@ -7,7 +7,7 @@ Acts as a central source of truth for all modules.
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional, Dict
+from typing import Optional, Dict, Tuple
 
 
 @dataclass
@@ -22,8 +22,9 @@ class Settings:
         tolerance_threshold (float): Delta E (dE2000) limit before flagging a fail.
         sample_size (int): The square size (in pixels) for mean patch sampling.
         output_dir (Path): Default location for reports and CDL exports.
-        supported_charts (Dict): Map of chart keys to Florence-2 prompt labels.
-        active_chart_type (str): The current chart type selected for detection.
+        crops_dir (Path): Location for rectified QC images (Official Output).
+        rectified_size (Tuple): Standard resolution for the warped chart crop.
+        active_chart_type (str): Current template key (defaulting to 'macbeth_24').
     """
     app_root: Path = Path(__file__).parent.parent.parent
     
@@ -35,49 +36,38 @@ class Settings:
     tolerance_threshold: float = 2.0  # Industry standard dE2000 'Noticeable' limit
     sample_size: int = 32            # 32x32 pixel average to ignore sensor noise
 
-    # Signature-Based Reference Library
-    # Instead of a user dropdown, the system matches the COUNT of patches found.
-    chart_signatures: Dict[int, Dict] = field(default_factory=lambda: {
-        24: {
+    # Rectification & Topology Settings
+    # Standardizing the warp target ensures consistent sampling math
+    rectified_size: Tuple[int, int] = (1200, 800) 
+    active_chart_type: str = "macbeth_24"
+
+    # Template Library: Macbeth-only for current development phase
+    chart_templates: Dict[str, Dict] = field(default_factory=lambda: {
+        "macbeth_24": {
             "label": "Macbeth 24-Patch",
-            "layout": (6, 4),
+            "grid": (6, 4), # Cols, Rows
             "neutral_indices": list(range(18, 24)),
             "target_space": "ACEScg"
-        },
-        11: {
-            "label": "Greyscale 11-Step",
-            "layout": (11, 1),
-            "neutral_indices": list(range(0, 11)),
-            "target_space": "Generic Linear"
-        },
-        21: {
-            "label": "Greyscale 21-Step",
-            "layout": (21, 1),
-            "neutral_indices": list(range(0, 21)),
-            "target_space": "Generic Linear"
-        },
-        5: {
-            "label": "Kodak Gray Card Plus",
-            "neutral_indices": [0, 1, 2, 3, 4], # All patches are neutral
-            "target_space": "Generic Linear"
         }
     })
 
-    # Fallback if the AI finds a number of patches not in the library
-    allow_generic_audit: bool = True
+    # New Official Output Directory
+    crops_dir: Path = field(init=False)
     
     # Export Settings
     output_dir: Path = field(init=False)
 
     def __post_init__(self):
         """Initialize dynamic paths and ensure directories exist."""
-        # Define internal resource paths
         self.default_ocio_path = self.app_root / "src" / "resources" / "ocio" / "config.ocio"
         self.current_ocio_path = self.default_ocio_path
         
-        # Define default export path
+        # Paths for Official Outputs
         self.output_dir = self.app_root / "exports"
+        self.crops_dir = self.output_dir / "rectified_crops"
+        
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.crops_dir.mkdir(parents=True, exist_ok=True)
 
     def update_ocio_config(self, custom_path: str):
         """
@@ -92,9 +82,18 @@ class Settings:
         else:
             raise FileNotFoundError(f"Invalid OCIO config path: {custom_path}")
         
-    def get_signature(self, patch_count: int) -> Optional[Dict]:
-        """Matches discovered patch counts to a known chart signature."""
-        return self.chart_signatures.get(patch_count)
+    def get_current_template(self) -> Dict:
+        """Returns the geometric template for the active chart type."""
+        return self.chart_templates.get(self.active_chart_type)
+    
+    def get_signature(self, patch_count: int):
+        """Returns the chart metadata based on the number of patches found."""
+        signatures = {
+            24: {"label": "Macbeth 24", "rows": 4, "cols": 6},
+            12: {"label": "Grayscale 12", "rows": 1, "cols": 12},
+            # Add more as we expand
+        }
+        return signatures.get(patch_count)
 
 
 # Global Singleton Instance
