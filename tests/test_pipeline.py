@@ -54,11 +54,15 @@ if __name__ == "__main__":
 
 if __name__ == "__main__":
     #Color charts
-    run_integration_test("D:/_repos/precision-color-auditor/test_assets/macbeth.jpg", "Macbeth")
-    run_integration_test("D:/_repos/precision-color-auditor/test_assets/blackMacbeth.jpeg", "BlackMacbeth")
-    run_integration_test("D:/_repos/precision-color-auditor/test_assets/pinkMacbeth.jpg", "PinkMacbeth")
-    run_integration_test("D:/_repos/precision-color-auditor/test_assets/MacbethBalls.jpg", "MacbethBalls")
-    run_integration_test("D:/_repos/precision-color-auditor/test_assets/miniMacbeth.jpg", "MacbethMini")
-    run_integration_test("D:/_repos/precision-color-auditor/test_assets/scifiMacbeth.jpg", "MacbethScifi")
-    run_integration_test("D:/_repos/precision-color-auditor/test_assets/macbeth_ref.jpg", "MacbethRef")
-    run_integration_test("D:/_repos/precision-color-auditor/test_assets/macbeth_ref2.jpg", "MacbethRefWide")
+    #run_integration_test("D:/_repos/precision-color-auditor/test_assets/macbeth.jpg", "Macbeth")
+    #run_integration_test("D:/_repos/precision-color-auditor/test_assets/blackMacbeth.jpeg", "BlackMacbeth")
+    #run_integration_test("D:/_repos/precision-color-auditor/test_assets/pinkMacbeth.jpg", "PinkMacbeth")
+    #run_integration_test("D:/_repos/precision-color-auditor/test_assets/MacbethBalls.jpg", "MacbethBalls")
+    #run_integration_test("D:/_repos/precision-color-auditor/test_assets/miniMacbeth.jpg", "MacbethMini")
+    #run_integration_test("D:/_repos/precision-color-auditor/test_assets/scifiMacbeth.jpg", "MacbethScifi")
+    #run_integration_test("D:/_repos/precision-color-auditor/test_assets/macbeth_ref.jpg", "MacbethRef")
+    #run_integration_test("D:/_repos/precision-color-auditor/test_assets/macbeth_ref2.jpg", "MacbethRefWide")
+
+    #GreyCards
+    run_integration_test("D:/_repos/precision-color-auditor/test_assets/KodakGray.jpg", "KodakGrayCardPlus")
+    run_integration_test("D:/_repos/precision-color-auditor/test_assets/KodakGrayCrop.jpg", "KodakGrayCardPlusCrop")

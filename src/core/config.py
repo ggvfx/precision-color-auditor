@@ -40,24 +40,32 @@ class Settings:
     # Rectification & Topology Settings
     # Standardizing the warp target ensures consistent sampling math
     rectified_size: Tuple[int, int] = (1200, 800) 
-    active_chart_type: str = "macbeth_24"
+    active_chart_type: str = "kodak_gray_plus"
 
-    # Template Library: Now including AI Grounding Prompts
+    # Template Library
     chart_templates: Dict[str, Dict] = field(default_factory=lambda: {
         "macbeth_24": {
             "label": "Macbeth 24-Patch",
+            "topology": "grid", # Standard 6x4 math
             "grid": (6, 4), 
             "neutral_indices": list(range(18, 24)),
             "target_space": "ACEScg",
-            # The AI "Search Term" for this specific chart:
             "detection_prompt": "macbeth color calibration chart, 6x4 rectangular color samples surrounded by black borders"
         },
-        "gray_scale_12": {
-            "label": "12-Step Gray Scale",
-            "grid": (12, 1),
-            "neutral_indices": list(range(0, 12)),
+        "kodak_gray_plus": {
+            "label": "Kodak Gray Card Plus",
+            "topology": "anchored", # Custom coordinate map
             "target_space": "ACEScg",
-            "detection_prompt": "linear grayscale calibration chart. horizontal rectangular steps. black borders."
+            "detection_prompt": "Kodak Gray Card Plus, large central gray square with white and black rectangular patches on the left and right sides",
+            # Normalized coordinates (0.0 to 1.0) for the 1200x800 rectified crop
+            "anchors": {
+                "main_gray": {"pos": (0.5, 0.5), "label": "18% Gray"},
+                "left_top_black": {"pos": (0.2, 0.25), "label": "Left Black"},
+                "left_bottom_white": {"pos": (0.2, 0.75), "label": "Left White"},
+                "right_top_white": {"pos": (0.8, 0.25), "label": "Right White"},
+                "right_bottom_black": {"pos": (0.8, 0.75), "label": "Right Black"}
+            },
+            "neutral_indices": ["main_gray", "left_bottom_white", "right_top_white"] 
         }
     })
 
