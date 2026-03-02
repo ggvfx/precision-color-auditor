@@ -33,7 +33,10 @@ class ChartDetector:
         if image_array.dtype == np.uint8:
             pil_img = Image.fromarray(image_array)
         else:
-            pil_img = Image.fromarray((np.clip(image_array, 0, 1) * 255).astype(np.uint8))
+            # Apply a 2.2 gamma lift to "linear" data so the AI can actually see the chart
+            normalized = np.clip(image_array, 0, 1)
+            gamma_lifted = np.power(normalized, 1/2.2) 
+            pil_img = Image.fromarray((gamma_lifted * 255).astype(np.uint8))
         
         # Prompt
         current_template = settings.get_current_template()

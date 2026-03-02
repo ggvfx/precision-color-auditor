@@ -40,7 +40,7 @@ class Settings:
     # Rectification & Topology Settings
     # Standardizing the warp target ensures consistent sampling math
     rectified_size: Tuple[int, int] = (1200, 800) 
-    active_chart_type: str = "kodak_gray_plus"
+    active_chart_type: str = "macbeth_24"
 
     # Template Library
     chart_templates: Dict[str, Dict] = field(default_factory=lambda: {
