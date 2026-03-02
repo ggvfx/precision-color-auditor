@@ -81,3 +81,72 @@ class ChartLocator:
         STUB: Kept as-is for your current diagnostic flow.
         """
         return image_buffer
+    
+    def _get_intersection(self, line1, line2):
+        """Calculates the intersection point of two lines."""
+        x1, y1, x2, y2 = line1
+        x3, y3, x4, y4 = line2
+        denom = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1)
+        if denom == 0: return None  # Parallel
+        ua = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / denom
+        return np.array([x1 + ua * (x2 - x1), y1 + ua * (y2 - y1)])
+
+    def _refine_corners(self, image_buffer: np.ndarray, poly_points: np.ndarray) -> np.ndarray:
+        """
+        Refines AI points by finding dominant lines and calculating 
+        their intersections (Virtual Corners).
+        """
+        # 1. Standardize to grayscale uint8
+        if image_buffer.dtype != np.uint8:
+            gray = (np.clip(image_buffer, 0, 1) * 255).astype(np.uint8)
+        else:
+            gray = image_buffer
+        if len(gray.shape) == 3:
+            gray = cv2.cvtColor(gray, cv2.COLOR_RGB2GRAY)
+            
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+
+        # 2. Tighten the search area based on AI suggestion
+        mask = np.zeros_like(gray)
+        cv2.fillPoly(mask, [poly_points.astype(np.int32)], 255)
+        mask = cv2.dilate(mask, np.ones((15, 15), np.uint8))
+        
+        # 3. Detect Edges and Lines
+        edges = cv2.Canny(blurred, 50, 150)
+        masked_edges = cv2.bitwise_and(edges, mask)
+        
+        lines = cv2.HoughLinesP(masked_edges, 1, np.pi/180, threshold=40, minLineLength=40, maxLineGap=10)
+        
+        if lines is None:
+            return poly_points
+
+        # 4. Group lines into Top, Bottom, Left, Right based on AI box proximity
+        # We classify lines based on their midpoints relative to the AI box
+        h_lines, v_lines = [], []
+        for line in lines:
+            x1, y1, x2, y2 = line[0]
+            if abs(x2 - x1) > abs(y2 - y1): h_lines.append(line[0])
+            else: v_lines.append(line[0])
+
+        # If we didn't find enough lines, fall back to AI
+        if len(h_lines) < 2 or len(v_lines) < 2:
+            return poly_points
+
+        # 5. Sort lines to find the extreme boundaries
+        h_lines.sort(key=lambda l: (l[1] + l[3]) / 2) # Sort by Y (top to bottom)
+        v_lines.sort(key=lambda l: (l[0] + l[2]) / 2) # Sort by X (left to right)
+
+        top_l, bot_l = h_lines[0], h_lines[-1]
+        left_l, right_l = v_lines[0], v_lines[-1]
+
+        # 6. Intersect the 4 boundary lines
+        tl = self._get_intersection(top_l, left_l)
+        tr = self._get_intersection(top_l, right_l)
+        br = self._get_intersection(bot_l, right_l)
+        bl = self._get_intersection(bot_l, left_l)
+
+        # Final safety check
+        if any(p is None for p in [tl, tr, br, bl]):
+            return poly_points
+
+        return np.array([tl, tr, br, bl], dtype=np.float32)
