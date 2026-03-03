@@ -41,7 +41,7 @@ class PatchSampler:
         color_patches = []
 
         # Get sample size from template, fallback to global if missing
-        s_size = template.get("sample_size", settings.sample_size)
+        s_size = template.sample_size
         radius = s_size // 2
 
         for i, (y, x) in enumerate(sample_coords):

@@ -25,7 +25,7 @@ class ChartTopology:
         Warps the skewed camera image into a flat, standardized 1200x800 buffer.
         """
         template = settings.get_current_template()
-        rect_w, rect_h = template.get("rectified_size", (1200, 800))
+        rect_w, rect_h = template.rectified_size
 
         # Define destination points using the local variables
         dst_pts = np.array([
@@ -49,8 +49,8 @@ class ChartTopology:
         template = settings.get_current_template()
         
         # 1. Fetch template-specific dimensions and margin
-        rect_w, rect_h = template.get("rectified_size", (1200, 800))
-        margin = template.get("inset_margin", 0.0)
+        rect_w, rect_h = template.rectified_size
+        margin = template.inset_margin
 
         points = []
         
@@ -63,8 +63,8 @@ class ChartTopology:
         safe_h = rect_h - (2 * margin_y)
 
         # GRID TOPOLOGY (Macbeth, etc.)
-        if template["topology"] == "grid":
-            cols, rows = template["grid"]
+        if template.topology == "grid":
+            cols, rows = template.grid
             
             # Divide the SAFE area by the number of patches
             cell_w = safe_w / cols
@@ -78,10 +78,9 @@ class ChartTopology:
                     points.append((int(center_y), int(center_x)))
         
         # ANCHORED TOPOLOGY (Kodak, etc.)
-        elif template["topology"] == "anchored":
-            for anchor_id, data in template["anchors"].items():
+        elif template.topology == "anchored":
+            for anchor_id, data in template.anchors.items():
                 u, v = data["pos"]
-                # Map normalized coordinates (0-1) to the actual rectified resolution
                 center_x = u * rect_w
                 center_y = v * rect_h
                 points.append((int(center_y), int(center_x)))

@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Optional, Dict, Tuple
 import numpy as np
 
+from .templates import CHART_LIBRARY, ChartTemplate
 
 @dataclass
 class Settings:
@@ -42,38 +43,18 @@ class Settings:
     rectified_size: Tuple[int, int] = (1200, 800) 
     active_chart_type: str = "macbeth_24"
 
-    # Template Library
-    chart_templates: Dict[str, Dict] = field(default_factory=lambda: {
-        "macbeth_24": {
-            "label": "Macbeth 24-Patch",
-            "topology": "grid", 
-            "grid": (6, 4), 
-            "rectified_size": (1200, 800),
-            "inset_margin": 0.03,
-            "sample_size": 32,
-            "neutral_indices": list(range(18, 24)),
-            "target_space": "ACEScg",
-            "detection_prompt": "macbeth color calibration chart, 6x4 rectangular color samples surrounded by black borders"
-        },
-        "kodak_gray_plus": {
-            "label": "Kodak Gray Card Plus",
-            "topology": "anchored",
-            "rectified_size": (1200, 900),
-            "inset_margin": 0.02,
-            "sample_size": 64,
-            "target_space": "ACEScg",
-            "detection_prompt": "Kodak Gray Card Plus, large central gray square with white and black rectangular patches on the left and right sides",
-            "anchors": {
-                "main_gray": {"pos": (0.5, 0.5), "label": "18% Gray"},
-                "left_top_black": {"pos": (0.2, 0.25), "label": "Left Black"},
-                "left_bottom_white": {"pos": (0.2, 0.75), "label": "Left White"},
-                "right_top_white": {"pos": (0.8, 0.25), "label": "Right White"},
-                "right_bottom_black": {"pos": (0.8, 0.75), "label": "Right Black"}
-            },
-            "neutral_indices": ["main_gray", "left_bottom_white", "right_top_white"] 
-        }
-    })
-
+    def get_current_template(self) -> ChartTemplate:
+        """
+        Returns the active ChartTemplate object from the central library.
+        """
+        template = CHART_LIBRARY.get(self.active_chart_type)
+        
+        if not template:
+            # Fallback to Macbeth if something goes wrong
+            return CHART_LIBRARY["macbeth_24"]
+            
+        return template
+    
     # Manual Draw Override Settings
     use_manual_locator: bool = False
     manual_corners: Optional[np.ndarray] = None
@@ -105,10 +86,6 @@ class Settings:
             self.current_ocio_path = path
         else:
             raise FileNotFoundError(f"Invalid OCIO config path: {custom_path}")
-        
-    def get_current_template(self) -> Dict:
-        """Returns the geometric template for the active chart type."""
-        return self.chart_templates.get(self.active_chart_type)
     
     def get_signature(self, patch_count: int):
         """Returns the chart metadata based on the number of patches found."""

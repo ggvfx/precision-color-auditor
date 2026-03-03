@@ -39,8 +39,8 @@ class ChartDetector:
             pil_img = Image.fromarray((gamma_lifted * 255).astype(np.uint8))
         
         # Prompt
-        current_template = settings.get_current_template()
-        description = current_template.get("detection_prompt", "")
+        template = settings.get_current_template()
+        description = template.detection_prompt
 
         task_tag = "<CAPTION_TO_PHRASE_GROUNDING>"
         full_prompt = f"{task_tag}{description}"
