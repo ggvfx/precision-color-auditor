@@ -1,8 +1,7 @@
 """
-Sampler Module - Diagnostic Mode
+Sampler Module
 ---------------------------------------------------
-Responsibility: visual verification of AI detection.
-Updated to overlay raw AI points on the source image and skip grid math.
+Responsibility: High-precision sampling of color patches from rectified chart buffers
 """
 
 from pathlib import Path
@@ -10,57 +9,68 @@ import cv2
 import numpy as np
 
 from .locator import ChartLocator
+from .topology import ChartTopology
 from core.models import ColorPatch
 from core.config import settings
 
 class PatchSampler:
     def __init__(self, engine):
         self.locator = ChartLocator(engine)
-        # Topology is bypassed for this diagnostic pass
-        self.topology = None 
+        self.topology = ChartTopology()
 
-    def sample_all(self, full_image: np.ndarray, source_name: str, manual_corners: np.ndarray = None) -> tuple:
-        image_output, raw_points = self.locator.locate(full_image, manual_corners=manual_corners)
+    def sample_all(self, full_image: np.ndarray, source_path: str, manual_corners: np.ndarray = None) -> tuple:
+        """
+        Full Pipeline: Locate -> Rectify -> Map -> Sample.
+        Returns: (List of ColorPatches, Rectified Image, Refined Corners)
+        """
+        template = settings.get_current_template()
+
+        # 1. Locate the 4 corners
+        _, raw_points = self.locator.locate(full_image, manual_corners=manual_corners)
         
-        if image_output is None or raw_points is None: 
+        if raw_points is None or len(raw_points) != 4:
             return [], None, None
+
+        # 2. Rectify to the standardized 1200x800 flat buffer
+        rectified_image = self.topology.rectify(full_image, raw_points)
+
+        # 3. Get the 24 sample coordinates (with that 3% inset we set)
+        sample_coords = self.topology.analyze()
+
+        # 4. Extract average color for each patch
+        color_patches = []
+
+        # Get sample size from template, fallback to global if missing
+        s_size = template.get("sample_size", settings.sample_size)
+        radius = s_size // 2
+
+        for i, (y, x) in enumerate(sample_coords):
+            # Calculate the window bounds
+            y1, y2 = max(0, y - radius), min(rectified_image.shape[0], y + radius)
+            x1, x2 = max(0, x - radius), min(rectified_image.shape[1], x + radius)
+            
+            # Extract the 32x32 window and calculate the mean
+            patch_window = rectified_image[int(y1):int(y2), int(x1):int(x2)]
+            mean_color = np.mean(patch_window, axis=(0, 1))
+            
+            # --- THE FIX: Match the ColorPatch Model requirements ---
+            # We must provide: name, observed_rgb, target_rgb, local_center, index
+            patch = ColorPatch(
+                name=f"Patch_{i}", 
+                observed_rgb=mean_color.astype(np.float32),
+                target_rgb=np.array([0.0, 0.0, 0.0], dtype=np.float32), # Placeholder
+                local_center=(int(x), int(y)),
+                index=i
+            )
+            color_patches.append(patch)
+
+        # 5. Save the 'Audit Proof' (The rectified image with dots)
+        file_stem = Path(source_path).stem
+        qc_image = self.topology.generate_qc_image(rectified_image, sample_coords)
+        qc_path = settings.output_dir / f"{file_stem}_RECTIFIED.png"
         
-        h, w = image_output.shape[:2]
+        cv2.imwrite(str(qc_path), cv2.cvtColor(qc_image, cv2.COLOR_RGB2BGR))
         
-        # --- DYNAMIC SCALING FOR VISUALS ---
-        # Scale markers based on image width (e.g., 1% of width)
-        base_size = max(1, w // 100) 
-        line_thick = max(2, w // 500)
-        font_scale = w / 1500.0 
-
-        draw_buffer = (np.clip(image_output.copy(), 0, 1) * 255).astype(np.uint8)
-        draw_buffer = cv2.cvtColor(draw_buffer, cv2.COLOR_RGB2BGR)
-
-        # Draw the points (Scaling 0-1 to pixels)
-        # Note: If locator already scaled them, we don't multiply by w,h again
-        # Based on your previous logs, raw_points were already absolute pixels
-        pixel_points = raw_points if np.max(raw_points) > 1.0 else raw_points * [w, h]
-
-        for i, pt in enumerate(pixel_points):
-            x, y = int(pt[0]), int(pt[1])
-            # Bright Magenta dots
-            cv2.circle(draw_buffer, (x, y), base_size, (255, 0, 255), -1)
-            # Large labels
-            cv2.putText(draw_buffer, str(i), (x + base_size, y + base_size), 
-                        cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255, 0, 255), line_thick)
-
-        # Draw the connection lines
-        pts_drawing = pixel_points.astype(np.int32).reshape((-1, 1, 2))
-        cv2.polylines(draw_buffer, [pts_drawing], isClosed=True, color=(0, 255, 0), thickness=line_thick)
-
-        # Save output
-        base_name = Path(source_name).stem
-        qc_path = settings.output_dir / f"{base_name}_AI_DETECTION_CHECK.png"
-        cv2.imwrite(str(qc_path), draw_buffer)
+        print(f"[SUCCESS] Sampled {len(color_patches)} patches. Proof: {file_stem}_RECTIFIED.png")
         
-        print(f"[DIAGNOSTIC] AI Detection Proof saved: {qc_path}")
-        return [], image_output, pixel_points
-
-    def _get_average_rgb(self, crop, py, px, radius):
-        """Not used in Diagnostic Mode"""
-        return np.array([0.0, 0.0, 0.0])
+        return color_patches, rectified_image, raw_points

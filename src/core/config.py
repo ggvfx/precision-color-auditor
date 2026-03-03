@@ -46,18 +46,23 @@ class Settings:
     chart_templates: Dict[str, Dict] = field(default_factory=lambda: {
         "macbeth_24": {
             "label": "Macbeth 24-Patch",
-            "topology": "grid", # Standard 6x4 math
+            "topology": "grid", 
             "grid": (6, 4), 
+            "rectified_size": (1200, 800),
+            "inset_margin": 0.03,
+            "sample_size": 32,
             "neutral_indices": list(range(18, 24)),
             "target_space": "ACEScg",
             "detection_prompt": "macbeth color calibration chart, 6x4 rectangular color samples surrounded by black borders"
         },
         "kodak_gray_plus": {
             "label": "Kodak Gray Card Plus",
-            "topology": "anchored", # Custom coordinate map
+            "topology": "anchored",
+            "rectified_size": (1200, 900),
+            "inset_margin": 0.02,
+            "sample_size": 64,
             "target_space": "ACEScg",
             "detection_prompt": "Kodak Gray Card Plus, large central gray square with white and black rectangular patches on the left and right sides",
-            # Normalized coordinates (0.0 to 1.0) for the 1200x800 rectified crop
             "anchors": {
                 "main_gray": {"pos": (0.5, 0.5), "label": "18% Gray"},
                 "left_top_black": {"pos": (0.2, 0.25), "label": "Left Black"},

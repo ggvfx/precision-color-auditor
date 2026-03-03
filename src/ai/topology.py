@@ -18,25 +18,28 @@ from .utils import prep_for_pil # Keep for PIL-based exports later
 
 class ChartTopology:
     def __init__(self):
-        self.rect_w, self.rect_h = settings.rectified_size
+        pass
 
     def rectify(self, image_buffer: np.ndarray, corners: np.ndarray) -> np.ndarray:
         """
         Warps the skewed camera image into a flat, standardized 1200x800 buffer.
         """
-        # Define destination points for the flat crop
+        template = settings.get_current_template()
+        rect_w, rect_h = template.get("rectified_size", (1200, 800))
+
+        # Define destination points using the local variables
         dst_pts = np.array([
             [0, 0],
-            [self.rect_w - 1, 0],
-            [self.rect_w - 1, self.rect_h - 1],
-            [0, self.rect_h - 1]
+            [rect_w - 1, 0],
+            [rect_w - 1, rect_h - 1],
+            [0, rect_h - 1]
         ], dtype=np.float32)
 
         # Calculate the perspective matrix from 4 refined points
         matrix = cv2.getPerspectiveTransform(corners.astype(np.float32), dst_pts)
         
         # Warp the high-precision float buffer
-        rectified = cv2.warpPerspective(image_buffer, matrix, (self.rect_w, self.rect_h))
+        rectified = cv2.warpPerspective(image_buffer, matrix, (rect_w, rect_h))
         return rectified
 
     def analyze(self) -> list:
@@ -44,16 +47,22 @@ class ChartTopology:
         Calculates the patch centers with a safety margin to avoid the thick outer frame.
         """
         template = settings.get_current_template()
+        
+        # 1. Fetch template-specific dimensions and margin
+        rect_w, rect_h = template.get("rectified_size", (1200, 800))
+        margin = template.get("inset_margin", 0.0)
+
         points = []
         
-        # 2% Inset to account for thicker outer borders
-        margin_x = self.rect_w * 0.03 
-        margin_y = self.rect_h * 0.03
+        # 2. Calculate pixel-based margins from the template's percentage
+        margin_x = rect_w * margin 
+        margin_y = rect_h * margin
         
-        # The "Working Area" inside the black bezel
-        safe_w = self.rect_w - (2 * margin_x)
-        safe_h = self.rect_h - (2 * margin_y)
+        # 3. Define the "Working Area" inside the safety margin
+        safe_w = rect_w - (2 * margin_x)
+        safe_h = rect_h - (2 * margin_y)
 
+        # GRID TOPOLOGY (Macbeth, etc.)
         if template["topology"] == "grid":
             cols, rows = template["grid"]
             
@@ -68,12 +77,13 @@ class ChartTopology:
                     center_y = margin_y + (r * cell_h) + (cell_h / 2)
                     points.append((int(center_y), int(center_x)))
         
+        # ANCHORED TOPOLOGY (Kodak, etc.)
         elif template["topology"] == "anchored":
-            # Anchored templates (like Kodak) usually define their own safe spots
             for anchor_id, data in template["anchors"].items():
                 u, v = data["pos"]
-                center_x = u * self.rect_w
-                center_y = v * self.rect_h
+                # Map normalized coordinates (0-1) to the actual rectified resolution
+                center_x = u * rect_w
+                center_y = v * rect_h
                 points.append((int(center_y), int(center_x)))
 
         return points
