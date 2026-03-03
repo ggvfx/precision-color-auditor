@@ -35,7 +35,7 @@ MACBETH_24 = ChartTemplate(
     target_space="ACEScg",
     detection_prompt="macbeth color calibration chart, 6x4 rectangular color samples surrounded by black borders",
     neutral_indices=list(range(18, 24)),
-    orientation_anchor=(18, 23) # White patch (18) must be brighter than Black patch (23)
+    orientation_anchor=(18, 5) # White patch (18) must be brighter than Teal patch (5)
 )
 
 KODAK_GRAY_PLUS = ChartTemplate(

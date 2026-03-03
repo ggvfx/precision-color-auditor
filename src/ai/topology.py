@@ -21,26 +21,21 @@ class ChartTopology:
         pass
 
     def rectify(self, image_buffer: np.ndarray, corners: np.ndarray) -> np.ndarray:
-        """
-        Warps the skewed camera image into a flat, standardized 1200x800 buffer.
-        Detects if the chart is vertical and adjusts the warp to prevent squashing.
-        """
         template = settings.get_current_template()
         rect_w, rect_h = template.rectified_size
 
-        # 1. Detect if the bounding box is vertical (Portrait)
-        # Using distance between Corner 0 (TL) and Corner 1 (TR) vs Corner 3 (BL)
+        # 1. Aspect Ratio Analysis
         dist_w = np.linalg.norm(corners[0] - corners[1])
         dist_h = np.linalg.norm(corners[0] - corners[3])
         is_portrait = dist_h > dist_w
+        
+        print(f"[DEBUG] Geometry: Detected W={dist_w:.1f}, H={dist_h:.1f} | Portrait={is_portrait}")
 
-        # 2. Swap destination dimensions if chart is vertical to maintain aspect ratio
         if is_portrait:
             target_w, target_h = rect_h, rect_w
         else:
             target_w, target_h = rect_w, rect_h
 
-        # Define destination points using target variables
         dst_pts = np.array([
             [0, 0],
             [target_w - 1, 0],
@@ -48,40 +43,48 @@ class ChartTopology:
             [0, target_h - 1]
         ], dtype=np.float32)
 
-        # 3. Calculate matrix and warp
         matrix = cv2.getPerspectiveTransform(corners.astype(np.float32), dst_pts)
         rectified = cv2.warpPerspective(image_buffer, matrix, (target_w, target_h))
 
-        # 4. Canonicalize: If it was portrait, rotate it back to the template's landscape orientation
         if is_portrait:
-            rectified = np.rot90(rectified, k=-1) # 90 deg clockwise rotate
+            print("[DEBUG] Rotating Portrait buffer -90deg to Landscape standard.")
+            rectified = np.rot90(rectified, k=-1) 
 
         return rectified
-    
+
     def verify_orientation(self, rectified_image: np.ndarray, points: list) -> np.ndarray:
         """
-        Uses template-defined anchors to ensure the chart isn't upside down.
+        Uses template-defined anchors (18 vs 5) to check for 180-degree flip.
+        Uses a luminance ratio to ensure the flip only happens when objectively wrong.
         """
         template = settings.get_current_template()
         
-        # Only proceed if the template defines an orientation check (e.g., Macbeth)
         if not hasattr(template, 'orientation_anchor') or template.orientation_anchor is None:
             return rectified_image
 
         idx_bright, idx_dark = template.orientation_anchor
         
-        # Sample coordinates from the provided grid/anchor points
-        y_b, x_b = points[idx_bright]
-        y_d, x_d = points[idx_dark]
+        # 1. Get coordinates for the diagonal check
+        y_b, x_b = points[idx_bright] # Expected White (18)
+        y_d, x_d = points[idx_dark]   # Expected Teal (5)
 
-        # Check mean luminance (average of RGB) at those coordinates
-        val_bright = np.mean(rectified_image[y_b, x_b])
-        val_dark = np.mean(rectified_image[y_d, x_d])
+        # 2. Sample 5x5 windows
+        box_b = rectified_image[max(0, y_b-2):y_b+3, max(0, x_b-2):x_b+3]
+        box_d = rectified_image[max(0, y_d-2):y_d+3, max(0, x_d-2):x_d+3]
 
-        # If the expected bright patch is darker than the dark one, flip 180
-        if val_bright < val_dark:
+        val_bright = np.mean(box_b)
+        val_dark = np.mean(box_d)
+
+        # 3. Ratio-based Logic
+        # White (18) should be significantly brighter than Teal (5).
+        # if Ratio < 1.0, it means the 'Bright' spot is actually the darker patch.
+        ratio = val_bright / (val_dark + 1e-6)
+
+        if ratio < 1.0:
+            print(f"[DEBUG] Orientation: Flip Triggered (Ratio {ratio:.4f} < 1.0)")
             return np.rot90(rectified_image, 2)
         
+        print(f"[DEBUG] Orientation: Correct (Ratio {ratio:.4f} >= 1.0)")
         return rectified_image
 
     def analyze(self) -> list:
