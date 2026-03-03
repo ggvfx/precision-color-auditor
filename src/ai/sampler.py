@@ -63,7 +63,7 @@ class PatchSampler:
             patch = ColorPatch(
                 name=f"Patch_{i}", 
                 observed_rgb=mean_color.astype(np.float32),
-                target_rgb=np.array([0.0, 0.0, 0.0], dtype=np.float32), # Placeholder
+                target_rgb = template.color_targets.get(i, [0.0, 0.0, 0.0]),
                 local_center=(int(x), int(y)),
                 index=i
             )
