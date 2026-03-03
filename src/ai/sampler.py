@@ -49,21 +49,25 @@ class PatchSampler:
         s_size = template.sample_size
         radius = s_size // 2
 
+        # Identify if we are using indices (grid) or keys (anchored)
         for i, (y, x) in enumerate(sample_coords):
-            # Calculate the window bounds
-            y1, y2 = max(0, y - radius), min(rectified_image.shape[0], y + radius)
-            x1, x2 = max(0, x - radius), min(rectified_image.shape[1], x + radius)
             
-            # Extract the 32x32 window and calculate the mean
-            patch_window = rectified_image[int(y1):int(y2), int(x1):int(x2)]
-            mean_color = np.mean(patch_window, axis=(0, 1))
-            
-            # --- THE FIX: Match the ColorPatch Model requirements ---
-            # We must provide: name, observed_rgb, target_rgb, local_center, index
+            # 1. Determine the correct key for color_targets
+            if template.topology == "anchored":
+                # Get the string key (e.g., "main_gray") from the anchors dict
+                target_key = list(template.anchors.keys())[i]
+            else:
+                # Use the integer index (0, 1, 2...)
+                target_key = i
+
+            # 2. Fetch the target RGB
+            target_rgb = template.color_targets.get(target_key, [0.0, 0.0, 0.0])
+
+            # 3. Create the patch
             patch = ColorPatch(
-                name=f"Patch_{i}", 
+                name=f"Patch_{target_key}", 
                 observed_rgb=mean_color.astype(np.float32),
-                target_rgb = template.color_targets.get(i, [0.0, 0.0, 0.0]),
+                target_rgb=np.array(target_rgb, dtype=np.float32),
                 local_center=(int(x), int(y)),
                 index=i
             )

@@ -62,8 +62,14 @@ KODAK_GRAY_PLUS = ChartTemplate(
     target_space="ACEScg",
     detection_prompt="Kodak Gray Card Plus, large central gray square...",
     anchors={
-        "main_gray": {"pos": (0.5, 0.5), "label": "18% Gray"},
-        # ... other anchors
+        # Central Main Gray
+        "main_gray":       {"pos": (0.50, 0.50), "label": "18% Gray"},
+        
+        # Sidebars (Normalized coordinates for the four distinct side patches)
+        "top_left_black":  {"pos": (0.08, 0.25), "label": "Black Patch TL"},
+        "bot_left_white":  {"pos": (0.08, 0.75), "label": "White Patch BL"},
+        "top_right_white": {"pos": (0.92, 0.25), "label": "White Patch TR"},
+        "bot_right_black": {"pos": (0.92, 0.75), "label": "Black Patch BR"},
     },
     neutral_indices=["main_gray", "left_bottom_white", "right_top_white"],
     orientation_anchor=None,

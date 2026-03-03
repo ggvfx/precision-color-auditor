@@ -19,7 +19,7 @@ The project has established a robust, local AI inference pipeline using **Floren
 * **Perspective Rectification:** OpenCV routines warp detected charts into a flat, standardized coordinate space based on template aspect ratios.
 * **Template-Driven Topology:** Dynamic support for various charts (Macbeth 24, Kodak Gray Card) via a centralized `ChartTemplate` library.
 * **Deterministic Grid Sampling:** High-precision mean-pixel extraction using configurable inset margins to avoid bezel contamination.
-* **Orientation Intelligence:** (Active) Logic to detect flipped or rotated charts via luminance gradient analysis of the grayscale ramp.
+* **Orientation Intelligence:** Logic to detect flipped or rotated charts via luminance gradient analysis of the grayscale ramp.
 
 ### Phase 3: The Auditor & OCIO (Current)
 * **OCIO Integration:** Integration of **OpenColorIO v2** to transform sampled data into scene-linear "Audit Space."
