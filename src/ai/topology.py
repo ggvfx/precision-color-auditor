@@ -23,24 +23,66 @@ class ChartTopology:
     def rectify(self, image_buffer: np.ndarray, corners: np.ndarray) -> np.ndarray:
         """
         Warps the skewed camera image into a flat, standardized 1200x800 buffer.
+        Detects if the chart is vertical and adjusts the warp to prevent squashing.
         """
         template = settings.get_current_template()
         rect_w, rect_h = template.rectified_size
 
-        # Define destination points using the local variables
+        # 1. Detect if the bounding box is vertical (Portrait)
+        # Using distance between Corner 0 (TL) and Corner 1 (TR) vs Corner 3 (BL)
+        dist_w = np.linalg.norm(corners[0] - corners[1])
+        dist_h = np.linalg.norm(corners[0] - corners[3])
+        is_portrait = dist_h > dist_w
+
+        # 2. Swap destination dimensions if chart is vertical to maintain aspect ratio
+        if is_portrait:
+            target_w, target_h = rect_h, rect_w
+        else:
+            target_w, target_h = rect_w, rect_h
+
+        # Define destination points using target variables
         dst_pts = np.array([
             [0, 0],
-            [rect_w - 1, 0],
-            [rect_w - 1, rect_h - 1],
-            [0, rect_h - 1]
+            [target_w - 1, 0],
+            [target_w - 1, target_h - 1],
+            [0, target_h - 1]
         ], dtype=np.float32)
 
-        # Calculate the perspective matrix from 4 refined points
+        # 3. Calculate matrix and warp
         matrix = cv2.getPerspectiveTransform(corners.astype(np.float32), dst_pts)
-        
-        # Warp the high-precision float buffer
-        rectified = cv2.warpPerspective(image_buffer, matrix, (rect_w, rect_h))
+        rectified = cv2.warpPerspective(image_buffer, matrix, (target_w, target_h))
+
+        # 4. Canonicalize: If it was portrait, rotate it back to the template's landscape orientation
+        if is_portrait:
+            rectified = np.rot90(rectified, k=-1) # 90 deg clockwise rotate
+
         return rectified
+    
+    def verify_orientation(self, rectified_image: np.ndarray, points: list) -> np.ndarray:
+        """
+        Uses template-defined anchors to ensure the chart isn't upside down.
+        """
+        template = settings.get_current_template()
+        
+        # Only proceed if the template defines an orientation check (e.g., Macbeth)
+        if not hasattr(template, 'orientation_anchor') or template.orientation_anchor is None:
+            return rectified_image
+
+        idx_bright, idx_dark = template.orientation_anchor
+        
+        # Sample coordinates from the provided grid/anchor points
+        y_b, x_b = points[idx_bright]
+        y_d, x_d = points[idx_dark]
+
+        # Check mean luminance (average of RGB) at those coordinates
+        val_bright = np.mean(rectified_image[y_b, x_b])
+        val_dark = np.mean(rectified_image[y_d, x_d])
+
+        # If the expected bright patch is darker than the dark one, flip 180
+        if val_bright < val_dark:
+            return np.rot90(rectified_image, 2)
+        
+        return rectified_image
 
     def analyze(self) -> list:
         """

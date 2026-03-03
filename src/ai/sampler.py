@@ -31,13 +31,18 @@ class PatchSampler:
         if raw_points is None or len(raw_points) != 4:
             return [], None, None
 
-        # 2. Rectify to the standardized 1200x800 flat buffer
+        # 2. Rectify (Now includes 90-degree Portrait-to-Landscape fix)
         rectified_image = self.topology.rectify(full_image, raw_points)
 
-        # 3. Get the 24 sample coordinates (with that 3% inset we set)
+        # 3. Handle 180-degree flip logic BEFORE generating final coordinates
+        # We use a temporary grid to check orientation
+        temp_coords = self.topology.analyze() 
+        rectified_image = self.topology.verify_orientation(rectified_image, temp_coords)
+
+        # 4. Generate the definitive sample coordinates from the now-finalized image
         sample_coords = self.topology.analyze()
 
-        # 4. Extract average color for each patch
+        # 5. Extract average color for each patch
         color_patches = []
 
         # Get sample size from template, fallback to global if missing
@@ -64,7 +69,7 @@ class PatchSampler:
             )
             color_patches.append(patch)
 
-        # 5. Save the 'Audit Proof' (The rectified image with dots)
+        # 6. Save the 'Audit Proof' (The rectified image with dots)
         file_stem = Path(source_path).stem
         qc_image = self.topology.generate_qc_image(rectified_image, sample_coords)
         qc_path = settings.output_dir / f"{file_stem}_RECTIFIED.png"

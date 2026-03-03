@@ -5,6 +5,10 @@ from typing import Tuple, List, Optional, Dict, Any
 class ChartTemplate:
     """
     Blueprint for a physical color reference chart.
+    
+    orientation_anchor: A Tuple (brighter_index, darker_index) used to 
+        detect if a chart is 180° upside down. For Macbeth, this is 
+        usually (White Patch, Black Patch). Set to None if symmetrical.
     """
     name: str
     label: str
@@ -17,6 +21,7 @@ class ChartTemplate:
     grid: Optional[Tuple[int, int]] = None
     anchors: Optional[Dict[str, Dict[str, Any]]] = None
     neutral_indices: List[Any] = field(default_factory=list)
+    orientation_anchor: Optional[Tuple[Any, Any]] = None
 
 # Chart Templates
 MACBETH_24 = ChartTemplate(
@@ -29,7 +34,8 @@ MACBETH_24 = ChartTemplate(
     sample_size=32,
     target_space="ACEScg",
     detection_prompt="macbeth color calibration chart, 6x4 rectangular color samples surrounded by black borders",
-    neutral_indices=list(range(18, 24))
+    neutral_indices=list(range(18, 24)),
+    orientation_anchor=(18, 23) # White patch (18) must be brighter than Black patch (23)
 )
 
 KODAK_GRAY_PLUS = ChartTemplate(
@@ -45,7 +51,8 @@ KODAK_GRAY_PLUS = ChartTemplate(
         "main_gray": {"pos": (0.5, 0.5), "label": "18% Gray"},
         # ... other anchors
     },
-    neutral_indices=["main_gray", "left_bottom_white", "right_top_white"]
+    neutral_indices=["main_gray", "left_bottom_white", "right_top_white"],
+    orientation_anchor=None
 )
 
 CHART_LIBRARY = {
