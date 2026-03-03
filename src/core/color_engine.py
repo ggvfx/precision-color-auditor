@@ -30,7 +30,7 @@ class ColorEngine:
     def get_linear_audit_spaces(self) -> list[str]:
         """
         Populates the Audit Space dropdown with only Linear/Scene-Linear spaces.
-        Filters based on OCIO 'family' or bit-depth characteristics[cite: 7, 21].
+        Filters based on OCIO 'family' or bit-depth characteristics.
         """
         if not self.config:
             return []
@@ -52,23 +52,48 @@ class ColorEngine:
 
     def map_metadata_to_space(self, metadata: dict) -> str:
         """
-        Attempts to find a matching OCIO space based on image metadata[cite: 4].
+        Refined to prioritize Ingest hints and handle RAW vs Generic fallbacks.
         """
-        # Look for common metadata keys from OIIO/Rawpy
-        potential_keys = ["Colorspace", "ocioconfig", "interpretation"]
-        available = self.get_input_spaces()
+        # Normalize Camera Info for the Report
+        raw_info = metadata.get("raw_metadata", {})
+        metadata["camera_make"] = raw_info.get("camera_make", "Unknown")
+        metadata["camera_model"] = raw_info.get("camera_model", "Unknown")
 
+        available = self.get_input_spaces()
+        
+        # 1. Handle RAW files specifically 
+        # (rawpy output is Linear Rec.709 primaries by default)
+        if metadata.get("is_raw"):
+            if "Utility - Linear - Rec.709" in available:
+                return "Utility - Linear - Rec.709"
+            if "Linear" in available:
+                return "Linear"
+
+        # 2. Check the explicit hint generated in ingest.py (e.g., 'sRGB', 'Linear')
+        hint = metadata.get("colorspace_hint")
+        if hint in available:
+            return hint
+            
+        # 3. Fallback to common industry metadata keys
+        potential_keys = ["Colorspace", "ocioconfig", "interpretation"]
         for key in potential_keys:
             val = metadata.get(key, "")
             if val in available:
                 return val
         
-        # Default fallback if no metadata match is found
+        # 4. Extension-based guessing for stripped files
+        fmt = metadata.get("file_format", "").upper()
+        if (fmt == "EXR" or "EXR" in fmt) and "Linear" in available:
+            return "Linear"
+        if fmt in ["JPG", "JPEG", "PNG"] and "sRGB" in available:
+            return "sRGB"
+        
+        # Final fallback
         return "Raw"
 
     def transform_buffer(self, pixel_buffer: np.ndarray, input_space: str, audit_space: str) -> np.ndarray:
         """
-        Transforms pixel data from Source to Linear Audit space[cite: 15, 21].
+        Transforms pixel data from Source to Linear Audit space.
         """
         try:
             processor = self.config.getProcessor(input_space, audit_space)
