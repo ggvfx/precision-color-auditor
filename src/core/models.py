@@ -9,7 +9,7 @@ from typing import List, Tuple, Optional
 import numpy as np
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=False)
 class ColorPatch:
     """
     Represents a single sampled patch from a physical color reference chart.
@@ -26,6 +26,7 @@ class ColorPatch:
     target_rgb: np.ndarray
     local_center: Tuple[int, int]
     index: int
+    delta_e: float = 0.0
 
     def __post_init__(self):
         """Validates that RGB data is stored as high-precision floats."""

@@ -26,25 +26,54 @@ from core.ingest import ImageIngestor
 def run_test_audit(image_path: str):
     # 1. Setup
     # Initialize your AI engine (YOLO/TensorRT/etc.)
-    engine = ChartDetector() 
+    engine = ChartDetector()
+    color_engine = ColorEngine()
     sampler = PatchSampler(engine)
     auditor = Auditor()
     
     print(f"--- Starting Audit for: {image_path} ---")
 
+    # 2. Load and Prepare Dual Streams
     try:
-        pixels, metadata = ImageIngestor.load_image(image_path)
+        # BRANCH 1: Display Branch (Original pixels for AI & QC Proof)
+        display_pixels, metadata = ImageIngestor.load_image(image_path)
     except Exception as e:
         print(f"[ERROR] Ingest failed: {e}")
         return
+    
+    # Identify the spaces
+    input_space = color_engine.map_metadata_to_space(metadata)
+    audit_space = "ACEScg" 
 
-    # 3. Full Pipeline: Locate, Rectify, and Sample
-    # This returns the ColorPatch objects which already have target_rgb inside
-    patches, rectified, corners = sampler.sample_all(pixels, image_path)
+    print(f"[DEBUG] Display Path: Original {metadata.get('file_format')}")
+    print(f"[DEBUG] Audit Path: Transforming '{input_space}' -> '{audit_space}'")
+    
+    # BRANCH 2: Audit Branch (Linear math only)
+    # We do NOT overwrite display_pixels.
+    audit_pixels = color_engine.transform_buffer(display_pixels, input_space, audit_space)
+
+    # 3. Full Pipeline: Locate on Display, Sample from Audit
+    # We need to update sampler.sample_all to accept BOTH buffers
+    patches, rectified, corners = sampler.sample_all(
+        display_pixels, 
+        audit_pixels, 
+        image_path
+    )
 
     if not patches:
         print("[ERROR] Failed to locate or sample the chart.")
         return
+    
+    # --- NEW DIAGNOSTIC PRINT ---
+    print("\n" + "-"*30)
+    print("PATCH DATA PRE-AUDIT (First 3 Patches):")
+    for i in range(min(3, len(patches))):
+        p = patches[i]
+        print(f"{p.name}:")
+        print(f"  Observed RGB: {p.observed_rgb}")
+        print(f"  Target RGB:   {p.target_rgb}")
+    print("-"*30 + "\n")
+    # ----------------------------
 
     # 4. Perform the Audit
     results = auditor.perform_audit(image_path, patches)
@@ -67,9 +96,11 @@ def run_test_audit(image_path: str):
 
 if __name__ == "__main__":
     # Test with a known Macbeth chart image
-    run_test_audit("D:/_repos/precision-color-auditor/test_assets/linearEXRmacbeth.exr")
+    """ run_test_audit("D:/_repos/precision-color-auditor/test_assets/linearEXRmacbeth.exr")
+    run_test_audit("D:/_repos/precision-color-auditor/test_assets/linearEXRmacbeth_PNG.png") """
     run_test_audit("D:/_repos/precision-color-auditor/test_assets/blackMacbeth.jpeg")
     run_test_audit("D:/_repos/precision-color-auditor/test_assets/blackMacbethrotate.jpeg")
     run_test_audit("D:/_repos/precision-color-auditor/test_assets/macbeth_ref2rotate.jpg")
     run_test_audit("D:/_repos/precision-color-auditor/test_assets/MacbethBalls.jpg")
     run_test_audit("D:/_repos/precision-color-auditor/test_assets/macbeth_ref2rotate.jpg")
+    

@@ -18,52 +18,56 @@ class PatchSampler:
         self.locator = ChartLocator(engine)
         self.topology = ChartTopology()
 
-    def sample_all(self, full_image: np.ndarray, source_path: str, manual_corners: np.ndarray = None) -> tuple:
+    def sample_all(self, display_buffer: np.ndarray, audit_buffer: np.ndarray, source_path: str, manual_corners: np.ndarray = None) -> tuple:
         """
-        Full Pipeline: Locate -> Rectify -> Map -> Sample.
-        Returns: (List of ColorPatches, Rectified Image, Refined Corners)
+        Dual-Branch Pipeline:
+        - Locates and Rectifies using display_buffer (Original look).
+        - Samples RGB values from audit_buffer (Linear ACEScg).
         """
         template = settings.get_current_template()
 
-        # 1. Locate the 4 corners
-        _, raw_points = self.locator.locate(full_image, manual_corners=manual_corners)
+        # 1. Locate using the Display Buffer (so AI can see clearly)
+        _, raw_points = self.locator.locate(display_buffer, manual_corners=manual_corners)
         
         if raw_points is None or len(raw_points) != 4:
             return [], None, None
 
-        # 2. Rectify (Now includes 90-degree Portrait-to-Landscape fix)
-        rectified_image = self.topology.rectify(full_image, raw_points)
+        # 2. Rectify BOTH buffers using the same corner points
+        # This ensures the coordinates match perfectly between the two branches
+        rect_display = self.topology.rectify(display_buffer, raw_points)
+        rect_audit = self.topology.rectify(audit_buffer, raw_points)
 
-        # 3. Handle 180-degree flip logic BEFORE generating final coordinates
-        # We use a temporary grid to check orientation
+        # 3. Orientation Fix (Apply to both)
         temp_coords = self.topology.analyze() 
-        rectified_image = self.topology.verify_orientation(rectified_image, temp_coords)
+        rect_display = self.topology.verify_orientation(rect_display, temp_coords)
+        rect_audit = self.topology.verify_orientation(rect_audit, temp_coords)
 
-        # 4. Generate the definitive sample coordinates from the now-finalized image
+        # 4. Generate sample coordinates
         sample_coords = self.topology.analyze()
 
-        # 5. Extract average color for each patch
         color_patches = []
-
-        # Get sample size from template, fallback to global if missing
         s_size = template.sample_size
         radius = s_size // 2
 
-        # Identify if we are using indices (grid) or keys (anchored)
         for i, (y, x) in enumerate(sample_coords):
-            
-            # 1. Determine the correct key for color_targets
             if template.topology == "anchored":
-                # Get the string key (e.g., "main_gray") from the anchors dict
                 target_key = list(template.anchors.keys())[i]
             else:
-                # Use the integer index (0, 1, 2...)
                 target_key = i
 
-            # 2. Fetch the target RGB
             target_rgb = template.color_targets.get(target_key, [0.0, 0.0, 0.0])
 
-            # 3. Create the patch
+            # Define region
+            y_start, y_end = max(0, y - radius), min(rect_audit.shape[0], y + radius)
+            x_start, x_end = max(0, x - radius), min(rect_audit.shape[1], x + radius)
+            
+            # 2. Slice all 3 channels (R, G, B) from the audit buffer
+            # Since we fixed ColorEngine to reshape(h, w, 3), rect_audit is now 3D.
+            patch_roi_audit = rect_audit[int(y_start):int(y_end), int(x_start):int(x_end), :]
+            
+            # Mean across Height and Width
+            mean_color = np.mean(patch_roi_audit, axis=(0, 1))
+
             patch = ColorPatch(
                 name=f"Patch_{target_key}", 
                 observed_rgb=mean_color.astype(np.float32),
@@ -73,13 +77,17 @@ class PatchSampler:
             )
             color_patches.append(patch)
 
-        # 6. Save the 'Audit Proof' (The rectified image with dots)
+        # 6. Save Proof using the DISPLAY buffer (Correct original look)
         file_stem = Path(source_path).stem
-        qc_image = self.topology.generate_qc_image(rectified_image, sample_coords)
+        qc_image = self.topology.generate_qc_image(rect_display, sample_coords)
         qc_path = settings.output_dir / f"{file_stem}_RECTIFIED.png"
         
+        # Ensure we write as uint8 for the display proof
+        if qc_image.dtype != np.uint8:
+            qc_image = (np.clip(qc_image, 0, 1) * 255).astype(np.uint8)
+            
         cv2.imwrite(str(qc_path), cv2.cvtColor(qc_image, cv2.COLOR_RGB2BGR))
         
         print(f"[SUCCESS] Sampled {len(color_patches)} patches. Proof: {file_stem}_RECTIFIED.png")
         
-        return color_patches, rectified_image, raw_points
+        return color_patches, rect_display, raw_points

@@ -30,13 +30,13 @@ class ChartDetector:
     def detect_chart_roi(self, image_array: np.ndarray) -> dict:
         height, width = image_array.shape[:2]
         
+        # Branch 1 ensures this is always a viewable display-referred image
         if image_array.dtype == np.uint8:
             pil_img = Image.fromarray(image_array)
         else:
-            # Apply a 2.2 gamma lift to "linear" data so the AI can actually see the chart
-            normalized = np.clip(image_array, 0, 1)
-            gamma_lifted = np.power(normalized, 1/2.2) 
-            pil_img = Image.fromarray((gamma_lifted * 255).astype(np.uint8))
+            # Simple 0-1 clip for float textures if they come in (e.g. from EXR)
+            # No more magic rescaling or gamma lifting here.
+            pil_img = Image.fromarray((np.clip(image_array, 0, 1) * 255).astype(np.uint8))
         
         # Prompt
         template = settings.get_current_template()

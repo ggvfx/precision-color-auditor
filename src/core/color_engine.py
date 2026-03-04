@@ -45,8 +45,8 @@ class ColorEngine:
                 linear_spaces.append(space.getName())
         
         # Ensure ACEScg is at the top of the list if it exists
-        if "ACES - ACEScg" in linear_spaces:
-            linear_spaces.insert(0, linear_spaces.pop(linear_spaces.index("ACES - ACEScg")))
+        if "ACEScg" in linear_spaces:
+            linear_spaces.insert(0, linear_spaces.pop(linear_spaces.index("ACEScg")))
             
         return linear_spaces
 
@@ -61,13 +61,12 @@ class ColorEngine:
 
         available = self.get_input_spaces()
         
-        # 1. Handle RAW files specifically 
-        # (rawpy output is Linear Rec.709 primaries by default)
+        # 1. Handle RAW files (Matches your specific OCIO categories)
         if metadata.get("is_raw"):
             if "Utility - Linear - Rec.709" in available:
                 return "Utility - Linear - Rec.709"
-            if "Linear" in available:
-                return "Linear"
+            # Fallback for generic linear
+            if "Linear" in available: return "Linear"
 
         # 2. Check the explicit hint generated in ingest.py (e.g., 'sRGB', 'Linear')
         hint = metadata.get("colorspace_hint")
@@ -83,22 +82,38 @@ class ColorEngine:
         
         # 4. Extension-based guessing for stripped files
         fmt = metadata.get("file_format", "").upper()
-        if (fmt == "EXR" or "EXR" in fmt) and "Linear" in available:
-            return "Linear"
-        if fmt in ["JPG", "JPEG", "PNG"] and "sRGB" in available:
-            return "sRGB"
+        if (fmt == "EXR" or "EXR" in fmt):
+            return "ACEScg"
+        if fmt in ["JPG", "JPEG", "PNG"]:
+            return "sRGB - Texture"
         
         # Final fallback
         return "Raw"
 
     def transform_buffer(self, pixel_buffer: np.ndarray, input_space: str, audit_space: str) -> np.ndarray:
-        """
-        Transforms pixel data from Source to Linear Audit space.
-        """
         try:
+            h, w = pixel_buffer.shape[:2]
+
+            # 1. Normalize and ensure Float32 C-Contiguous
+            data = pixel_buffer.astype(np.float32)
+            if pixel_buffer.dtype == np.uint8:
+                data /= 255.0
+            
+            data = np.ascontiguousarray(data)
+
+            # 2. Get the Processor
             processor = self.config.getProcessor(input_space, audit_space)
-            cpu_processor = processor.getDefaultCPUProcessor()
-            return cpu_processor.applyRGB(pixel_buffer)
+            cpu = processor.getDefaultCPUProcessor()
+
+            # 3. Wrap NumPy array in an OCIO Image Descriptor
+            # PackedImageDesc(data, width, height, numChannels)
+            img_desc = OCIO.PackedImageDesc(data, w, h, 3)
+
+            # 4. Apply the transform IN-PLACE on the 'data' array
+            cpu.apply(img_desc)
+
+            # 5. Return the modified 'data' array, reshaped to (H, W, 3)
+            return data.reshape(h, w, 3)
+            
         except Exception as e:
-            print(f"Transform Error: {e}")
-            return pixel_buffer
+            raise RuntimeError(f"OCIO Transform Failed: {e}")
