@@ -40,7 +40,6 @@ class PatchSampler:
         # 3. Orientation Fix (Apply to both)
         temp_coords = self.topology.analyze() 
         rect_display = self.topology.verify_orientation(rect_display, temp_coords)
-        rect_audit = self.topology.verify_orientation(rect_audit, temp_coords)
 
         # 4. Generate sample coordinates
         sample_coords = self.topology.analyze()

@@ -3,10 +3,10 @@
 **Precision Color Auditor** is a professional, standalone calibration instrument designed for Digital Imaging Professionals, VFX Supervisors, and Photographers. By leveraging local computer vision models and template-driven geometric rectification, the tool automates the "ground truth" verification of digital images, identifying color drift and exposure errors while providing deterministic neutralization via non-destructive sidecar metadata.
 
 ## Project Status
-🚦 **Project Status:** Alpha (Macro & Micro Pipelines Validated)
-The project has established a robust, local AI inference pipeline using **Florence-2** for localization and a **Template-Driven Topology** engine for precise patch sampling.
+🚦 **Project Status:** Alpha (Dual-Branch Pipeline Validated)
+The project has established a robust, local AI inference pipeline using **Florence-2** for localization and a **Dual-Branch OCIO** engine that synchronizes AI vision with scene-linear math.
 
-**Current Milestone:** Implementing the **OCIO Audit Engine** to calculate Delta E 2000 errors and ASC-CDL neutralization values.
+**Current Milestone:** Validating the **OCIO Audit Engine** to calculate Delta E 2000 errors and ASC-CDL neutralization values.
 
 ## Strategic Roadmap
 
@@ -21,12 +21,13 @@ The project has established a robust, local AI inference pipeline using **Floren
 * **Deterministic Grid Sampling:** High-precision mean-pixel extraction using configurable inset margins to avoid bezel contamination.
 * **Orientation Intelligence:** Logic to detect flipped or rotated charts via luminance gradient analysis of the grayscale ramp.
 
-### Phase 3: The Auditor & OCIO (Current)
-* **OCIO Integration:** Integration of **OpenColorIO v2** to transform sampled data into scene-linear "Audit Space."
-* **Signal Analysis:** Leveraging `colour-science` to quantify color accuracy using **Delta E 2000** metrics.
-* **CDL Generation:** Calculating required **Slope, Offset, and Power** (ASC-CDL) to align observed data with mathematical ground truth.
+### Phase 3: The Auditor & OCIO (Complete)
+* **Dual-Branch Architecture:** Synchronized rectification across a high-contrast "Display Branch" (AI/UI) and a scene-linear "Audit Branch" (Math).
+* **High-Performance OCIO v2:** Implementation of `PackedImageDesc` for zero-copy, in-place transformation of NumPy buffers.
+* **Template-Driven Targets:** Deterministic ground-truth comparison using a centralized `ChartTemplate` library for target RGB values.
+* **CDL Derivation:** Mathematical calculation of **Slope and Offset** (ASC-CDL) to align observed data with ground-truth targets.
 
-### Phase 4: Professional Exports & Reporting (Upcoming)
+### Phase 4: Professional Exports & Reporting (Current)
 * **Neutralization Exporters:** Industry-standard **ASC-CDL** (.cdl, .cc) and **3D LUT** (.cube) generation.
 * **Human-in-the-Loop UI:** PySide6 interface for manual corner refinement and "QC Crop" verification.
 * **Automated QA Reporting:** Generation of CSV and PDF reports for production hand-offs and VFX plate delivery.
