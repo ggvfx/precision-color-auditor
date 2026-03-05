@@ -81,3 +81,21 @@ class AuditResult:
     def get_neutral_patches(self) -> List[ColorPatch]:
         """Returns only the patches identified as neutral (Macbeth indices 18-23)."""
         return [p for p in self.patches if 18 <= p.index <= 23]
+    
+@dataclass
+class AuditTask:
+    """
+    The Session Manager's container for tracking an image through the pipeline.
+    This links a physical file to its mathematical AuditResult and its UI state.
+    """
+    task_id: str
+    file_path: str
+    status: str = "Pending"  # Options: Pending, Processing, Success, Failed, Manual_Required
+    
+    # User Overrides (Set by the UI)
+    manual_corners: Optional[np.ndarray] = None
+    input_space_override: Optional[str] = None
+    
+    # The Payload
+    result: Optional[AuditResult] = None
+    error_message: Optional[str] = None
