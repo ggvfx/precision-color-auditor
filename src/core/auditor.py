@@ -7,6 +7,7 @@ import numpy as np
 import colour
 from core.models import ColorPatch, AuditResult
 from core.config import settings
+from core.templates import CHART_LIBRARY
 from datetime import datetime
 
 class Auditor:
@@ -23,23 +24,18 @@ class Auditor:
         """
         Dispatches to the correct math based on the template's analysis_mode.
         """
-        template = settings.get_current_template()
+        # Look up the specific template used when this image was sampled
+        template = CHART_LIBRARY.get(audit_result.template_name)
+        
+        # Fallback safety
+        if not template:
+            print(f"WARNING: Template {audit_result.template_name} not found. Defaulting to Macbeth.")
+            template = CHART_LIBRARY["macbeth_24"]
+
         mode = getattr(template, 'analysis_mode', 'gain')
 
-        # DISPATCHER DEBUG
-        print(f"--- DISPATCHER DEBUG ---")
-        print(f"Template Name: {template.name}")
-        print(f"Analysis Mode: {mode}")
-        print(f"Patch Count: {len(audit_result.patches)}")
-
         # Map the patches for easy lookup
-        # In calculate_cdl_correction
-        patch_map = {}
-        for p in audit_result.patches:
-            clean_name = p.name.replace("Patch_", "").strip().lower()
-            patch_map[clean_name] = p
-            patch_map[str(p.index)] = p # Allows lookup by '18' or 18
-
+        patch_map = {p.name.replace("Patch_", "").strip().lower(): p for p in audit_result.patches}
         index_map = {p.index: p for p in audit_result.patches}
 
         if mode == "gain":
@@ -57,22 +53,29 @@ class Auditor:
             # Tier 4: Macbeth - CDL + placeholder for Matrix
             return self._solve_color(audit_result, index_map, template.neutral_indices)
 
-        print("WARNING: No mode matched. Returning identity.")
+        print("WARNING: No mode matched. Returning identity.") 
         return audit_result
 
     def _solve_gain(self, result: AuditResult) -> AuditResult:
         """TIER 1: Single patch balance (Slope only, Offset 0)."""
         if not result.patches: return result
+        
+        # Grab the primary patch (usually center or index 0)
         obs = result.patches[0].observed_rgb
         targ = result.patches[0].target_rgb
         
+        # Calculate suggested Gain
         result.slope = np.clip(targ / (obs + 1e-6), 0.0, 4.0).astype(np.float32)
+        
+        # Ensure Offset and Power are strictly identity
         result.offset = np.zeros(3, dtype=np.float32)
+        result.power = np.ones(3, dtype=np.float32)
+        
         return result
 
     def _solve_anchors(self, result: AuditResult, patch_map: dict) -> AuditResult:
-        """TIER 2: Anchor Set. Linear regression across all identified neutrals."""
-        template = settings.get_current_template()
+        """TIER 2: Anchor Set. Uses the PINNED template name."""
+        template = CHART_LIBRARY.get(result.template_name, CHART_LIBRARY["macbeth_24"])
         neutral_names = template.neutral_indices
 
         # DIAGNOSTIC PRINTS

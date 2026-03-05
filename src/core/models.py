@@ -39,6 +39,7 @@ class ColorPatch:
 @dataclass
 class AuditResult:
     file_path: str
+    template_name: str = "macbeth_24"
     corners: Optional[np.ndarray] = None 
     rectified_path: Optional[str] = None
     rectified_buffer: Optional[np.ndarray] = None

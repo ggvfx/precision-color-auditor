@@ -15,6 +15,7 @@ from core.config import settings
 
 class PatchSampler:
     def __init__(self, engine):
+        self.engine = engine
         self.locator = ChartLocator(engine)
         self.topology = ChartTopology()
 
@@ -86,6 +87,7 @@ class PatchSampler:
         # 6. Build the Final AuditResult
         result = AuditResult(
             file_path=source_path,
+            template_name=template.name,
             corners=raw_points,
             rectified_buffer=qc_image,
             patches=color_patches
