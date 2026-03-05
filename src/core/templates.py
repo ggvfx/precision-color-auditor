@@ -5,14 +5,11 @@ from typing import Tuple, List, Optional, Dict, Any
 class ChartTemplate:
     """
     Blueprint for a physical color reference chart.
-    
-    orientation_anchor: A Tuple (brighter_index, darker_index) used to 
-        detect if a chart is 180° upside down. For Macbeth, this is 
-        usually (White Patch, Black Patch). Set to None if symmetrical.
     """
     name: str
     label: str
     topology: str  # 'grid' or 'anchored'
+    analysis_mode: str  # 'gain', 'anchors', 'ramp', or 'color'
     rectified_size: Tuple[int, int]
     inset_margin: float
     sample_size: int
@@ -24,13 +21,12 @@ class ChartTemplate:
     orientation_anchor: Optional[Tuple[Any, Any]] = None
     color_targets: Dict[Any, List[float]] = field(default_factory=dict)
 
-# Chart Templates
-# 1. MACBETH 24 (Linear ACEScg / AP1)
-# Values: Standard X-Rite/BabelColor D50 Lab converted to Linear ACEScg.
+# 1. MACBETH 24 (Tier 4: Color Matrix)
 MACBETH_24 = ChartTemplate(
     name="macbeth_24",
     label="Macbeth 24-Patch",
     topology="grid",
+    analysis_mode="color",  # Full Color Profiling
     grid=(6, 4),
     rectified_size=(1200, 800),
     inset_margin=0.03,
@@ -38,7 +34,7 @@ MACBETH_24 = ChartTemplate(
     target_space="ACEScg",
     detection_prompt="macbeth color calibration chart, 6x4 rectangular color samples surrounded by black borders",
     neutral_indices=list(range(18, 24)),
-    orientation_anchor=(18, 5), # White patch (18) must be brighter than Teal patch (5)
+    orientation_anchor=(18, 5),
     color_targets={
         0: [0.118, 0.082, 0.065], 1: [0.398, 0.285, 0.219], 2: [0.153, 0.186, 0.260],
         3: [0.100, 0.124, 0.063], 4: [0.245, 0.231, 0.355], 5: [0.133, 0.315, 0.283],
@@ -52,26 +48,26 @@ MACBETH_24 = ChartTemplate(
     }
 )
 
+# 2. KODAK GRAY CARD PLUS (Tier 2: Anchor Set)
 KODAK_GRAY_PLUS = ChartTemplate(
     name="kodak_gray_plus",
     label="Kodak Gray Card Plus",
     topology="anchored",
+    analysis_mode="anchors",  # Specific named patch calibration
     rectified_size=(1200, 900),
     inset_margin=0.02,
     sample_size=64,
     target_space="ACEScg",
     detection_prompt="Kodak Gray Card Plus, large central gray square...",
     anchors={
-        # Central Main Gray
         "main_gray":       {"pos": (0.50, 0.50), "label": "18% Gray"},
-        
-        # Sidebars (Normalized coordinates for the four distinct side patches)
         "top_left_black":  {"pos": (0.08, 0.25), "label": "Black Patch TL"},
         "bot_left_white":  {"pos": (0.08, 0.75), "label": "White Patch BL"},
         "top_right_white": {"pos": (0.92, 0.25), "label": "White Patch TR"},
         "bot_right_black": {"pos": (0.92, 0.75), "label": "Black Patch BR"},
     },
-    neutral_indices=["main_gray", "left_bottom_white", "right_top_white"],
+    # Synchronized names with the anchors above
+    neutral_indices=["main_gray", "bot_left_white", "top_right_white", "top_left_black", "bot_right_black"],
     orientation_anchor=None,
     color_targets={
         "main_gray":       [0.180, 0.180, 0.180],
@@ -82,7 +78,42 @@ KODAK_GRAY_PLUS = ChartTemplate(
     }
 )
 
+# 3. 11-STEP GRAYSCALE (Tier 3: Neutral Ramp)
+# (Placeholder for future addition)
+GRAYSCALE_11 = ChartTemplate(
+    name="grayscale_11",
+    label="11-Step Neutral Ramp",
+    topology="grid",
+    analysis_mode="ramp",  # Sequence profiling
+    grid=(11, 1),
+    rectified_size=(1100, 200),
+    inset_margin=0.05,
+    sample_size=32,
+    target_space="ACEScg",
+    detection_prompt="linear grayscale ramp with 11 steps from black to white",
+    neutral_indices=list(range(11)),
+    color_targets={i: [v, v, v] for i, v in enumerate([0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0])}
+)
+
+# 4. SINGLE 18% GRAY (Tier 1: Single Point)
+GRAY_CARD = ChartTemplate(
+    name="gray_card",
+    label="Standard Gray Card",
+    topology="anchored",
+    analysis_mode="gain",  # Mid-gray balance only
+    rectified_size=(800, 800),
+    inset_margin=0.1,
+    sample_size=128,
+    target_space="ACEScg",
+    detection_prompt="solid neutral gray card",
+    anchors={"center": {"pos": (0.5, 0.5), "label": "18% Gray"}},
+    neutral_indices=["center"],
+    color_targets={"center": [0.18, 0.18, 0.18]}
+)
+
 CHART_LIBRARY = {
     "macbeth_24": MACBETH_24,
-    "kodak_gray_plus": KODAK_GRAY_PLUS
+    "kodak_gray_plus": KODAK_GRAY_PLUS,
+    "grayscale_11": GRAYSCALE_11,
+    "gray_card": GRAY_CARD
 }

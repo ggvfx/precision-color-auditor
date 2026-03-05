@@ -36,29 +36,8 @@ class ColorPatch:
         if self.target_rgb.dtype != np.float32 and self.target_rgb.dtype != np.float64:
             object.__setattr__(self, 'target_rgb', self.target_rgb.astype(np.float32))
 
-
 @dataclass
 class AuditResult:
-    """
-    Holds the calculated error metrics and neutralization data for an audited image.
-    
-    Attributes:
-        file_path (str): Source path of the audited image.
-        delta_e_mean (float): The average Delta E (dE2000) across all sampled patches.
-        delta_e_max (float): The highest recorded Delta E error in the set.
-        is_pass (bool): Whether the audit falls within the user-defined tolerance.
-        corners (Optional[np.ndarray]): The 4 corner coordinates [TL, TR, BR, BL] found by the AI or user.
-        rectified_path (Optional[str]): The file path to the saved verification crop.
-        
-        # ASC-CDL Neutralization Values
-        slope (np.ndarray): RGB Slope values (default [1.0, 1.0, 1.0]).
-        offset (np.ndarray): RGB Offset values (default [0.0, 0.0, 0.0]).
-        power (np.ndarray): RGB Power values (default [1.0, 1.0, 1.0]).
-        sat (float): Global Saturation value (default 1.0).
-        
-        patches (List[ColorPatch]): List of individual patch data for granular reporting.
-        timestamp (str): ISO formatted string of the audit execution time.
-    """
     file_path: str
     corners: Optional[np.ndarray] = None 
     rectified_path: Optional[str] = None
@@ -67,22 +46,33 @@ class AuditResult:
     delta_e_max: float = 0.0
     is_pass: bool = False
     
+    # ASC-CDL Neutralization Values
     slope: np.ndarray = field(default_factory=lambda: np.array([1.0, 1.0, 1.0], dtype=np.float32))
     offset: np.ndarray = field(default_factory=lambda: np.array([0.0, 0.0, 0.0], dtype=np.float32))
     power: np.ndarray = field(default_factory=lambda: np.array([1.0, 1.0, 1.0], dtype=np.float32))
     sat: float = 1.0
+
+    # Color Matrix (Future-proofing for Tier 4)
+    # Identity matrix by default (no change)
+    matrix_3x3: np.ndarray = field(default_factory=lambda: np.eye(3, dtype=np.float32))
     
     patches: List[ColorPatch] = field(default_factory=list)
     timestamp: Optional[str] = None
 
     def get_sop_summary(self) -> str:
-        """Returns a formatted string of the CDL SOP values for logging."""
         return (f"Slope: {self.slope} | Offset: {self.offset} | "
                 f"Power: {self.power} | Sat: {self.sat}")
     
     def get_neutral_patches(self) -> List[ColorPatch]:
-        """Returns only the patches identified as neutral (Macbeth indices 18-23)."""
-        return [p for p in self.patches if 18 <= p.index <= 23]
+        """Returns patches flagged as neutral in the active template."""
+        from core.config import settings
+        template = settings.get_current_template()
+        neutral_indices = template.neutral_indices
+        
+        return [
+            p for p in self.patches 
+            if p.index in neutral_indices or p.name.replace("Patch_", "") in neutral_indices
+        ]
     
 @dataclass
 class AuditTask:
