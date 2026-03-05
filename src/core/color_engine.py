@@ -117,3 +117,16 @@ class ColorEngine:
             
         except Exception as e:
             raise RuntimeError(f"OCIO Transform Failed: {e}")
+        
+    def get_ui_lists(self) -> tuple[list[str], list[str]]:
+        """
+        Helper for UI population.
+        Returns:
+            tuple: (source_spaces, audit_spaces)
+            - source_spaces: All available spaces (Display/Log/Utility).
+            - audit_spaces: Filtered Linear/ACES spaces for math operations.
+        """
+        source_spaces = self.get_input_spaces()
+        audit_spaces = self.get_linear_audit_spaces()
+        
+        return source_spaces, audit_spaces
