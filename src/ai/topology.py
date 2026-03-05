@@ -132,16 +132,37 @@ class ChartTopology:
 
         return points
 
-    def generate_qc_image(self, rectified_image: np.ndarray, points: list) -> np.ndarray:
+    def generate_qc_image(self, rectified_image: np.ndarray, corners: np.ndarray = None, patch_results: list = None) -> np.ndarray:
         """
-        Overlays sample points onto the rectified image for visual audit.
+        Creates a viewable sRGB audit image.
+        - If corners are provided: draws the boundary box.
+        - If patch_results are provided: draws the Pass/Fail grid.
         """
-        # Create a uint8 copy for drawing
-        qc_img = (np.clip(rectified_image.copy(), 0, 1) * 255).astype(np.uint8)
-        
-        for (y, x) in points:
-            # Magenta dot with a black border for maximum contrast
-            cv2.circle(qc_img, (x, y), 10, (255, 0, 255), -1)
-            cv2.circle(qc_img, (x, y), 10, (0, 0, 0), 2)
+        # Ensure we are working with a uint8 sRGB-style copy for the UI
+        if rectified_image.dtype != np.uint8:
+            qc_img = (np.clip(rectified_image, 0, 1) * 255).astype(np.uint8)
+        else:
+            qc_img = rectified_image.copy()
+
+        # Layer 1: Boundary Box (The 'Frame')
+        if corners is not None:
+            # Draw lines between corners: 0->1, 1->2, 2->3, 3->0
+            pts = corners.astype(np.int32).reshape((-1, 1, 2))
+            cv2.polylines(qc_img, [pts], True, (0, 255, 255), 2) # Cyan/Yellow boundary
+
+        # Layer 2: Sample Points (The 'Audit')
+        if patch_results:
+            template = settings.get_current_template()
+            radius = template.sample_size // 2
             
+            for patch in patch_results:
+                y, x = patch.local_center
+                # Pass/Fail color logic
+                color = (0, 255, 0) if patch.delta_e <= settings.tolerance_threshold else (0, 0, 255) # BGR
+                
+                # Draw square
+                cv2.rectangle(qc_img, (x-radius, y-radius), (x+radius, y+radius), color, 1)
+                # Draw small center dot
+                cv2.circle(qc_img, (x, y), 2, color, -1)
+
         return qc_img
