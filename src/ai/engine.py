@@ -27,18 +27,18 @@ class ChartDetector:
         )
         print(f"[SUCCESS] Florence-2 ready on {self.device}")
 
-    def detect_chart_roi(self, image_array: np.ndarray) -> dict:
+    def detect_chart_roi(self, image_array: np.ndarray) -> tuple[dict, str]:
+        """
+        Runs Florence-2 detection and returns both the parsed coordinates 
+        and the raw reasoning string for the UI logs.
+        """
         height, width = image_array.shape[:2]
         
-        # Branch 1 ensures this is always a viewable display-referred image
         if image_array.dtype == np.uint8:
             pil_img = Image.fromarray(image_array)
         else:
-            # Simple 0-1 clip for float textures if they come in (e.g. from EXR)
-            # No more magic rescaling or gamma lifting here.
             pil_img = Image.fromarray((np.clip(image_array, 0, 1) * 255).astype(np.uint8))
         
-        # Prompt
         template = settings.get_current_template()
         description = template.detection_prompt
 
@@ -57,16 +57,21 @@ class ChartDetector:
                 num_beams=3
             )
         
+        # 1. Capture the raw string
         results = self.processor.batch_decode(generated_ids, skip_special_tokens=False)[0]
+        
+        # debug print
         print(f"\n[RAW AI OUTPUT - GROUNDING] {results}")
         
+        # 2. Parse the answer
         parsed_answer = self.processor.post_process_generation(
             results, 
             task=task_tag, 
             image_size=(width, height)
         )
         
-        return parsed_answer
+        # 3. Return both as a tuple
+        return parsed_answer, results
 
     def extract_polygons(self, roi_result, width: int, height: int) -> np.ndarray:
         if isinstance(roi_result, list):

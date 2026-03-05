@@ -29,11 +29,15 @@ class PatchSampler:
         template = settings.get_current_template()
 
         # 1. Locate using the Display Buffer
-        _, raw_points = self.locator.locate(display_buffer, manual_corners=manual_corners)
+        raw_points, reasoning = self.locator.locate(display_buffer, manual_corners=manual_corners)
         
         if raw_points is None or len(raw_points) != 4:
-            # Return an empty result if detection fails
-            return AuditResult(file_path=source_path, is_pass=False)
+            return AuditResult(
+                file_path=source_path, 
+                template_name=template.name,
+                ai_reasoning=reasoning, # UI will show why it failed
+                is_pass=False
+            )
 
         # 2. Rectify BOTH buffers
         rect_display = self.topology.rectify(display_buffer, raw_points)
@@ -88,6 +92,7 @@ class PatchSampler:
         result = AuditResult(
             file_path=source_path,
             template_name=template.name,
+            ai_reasoning=reasoning,
             corners=raw_points,
             rectified_buffer=qc_image,
             patches=color_patches
