@@ -19,7 +19,7 @@ class PatchSampler:
         self.locator = ChartLocator(engine)
         self.topology = ChartTopology()
 
-    def sample_all(self, display_buffer: np.ndarray, audit_buffer: np.ndarray, source_path: str, manual_corners: np.ndarray = None) -> AuditResult:
+    def sample_all(self, display_buffer: np.ndarray, audit_buffer: np.ndarray, source_path: str, manual_corners: np.ndarray = None, use_snap: bool = True) -> AuditResult:
         """
         Dual-Branch Pipeline:
         - Locates and Rectifies using display_buffer.
@@ -29,13 +29,13 @@ class PatchSampler:
         template = settings.get_current_template()
 
         # 1. Locate using the Display Buffer
-        raw_points, reasoning = self.locator.locate(display_buffer, manual_corners=manual_corners)
+        raw_points, reasoning = self.locator.locate(display_buffer, manual_corners=manual_corners, use_snap=use_snap)
         
         if raw_points is None or len(raw_points) != 4:
             return AuditResult(
                 file_path=source_path, 
                 template_name=template.name,
-                ai_reasoning=reasoning, # UI will show why it failed
+                ai_reasoning=reasoning,
                 is_pass=False
             )
 

@@ -13,9 +13,13 @@ class ChartLocator:
     def __init__(self, engine):
         self.engine = engine
 
-    def locate(self, image_buffer: np.ndarray, manual_corners: np.ndarray = None) -> tuple[np.ndarray, str]:
+    def locate(self, image_buffer: np.ndarray, manual_corners: np.ndarray = None, use_snap: bool = True) -> tuple[np.ndarray, str]:
         """
         Returns: (refined_points, ai_reasoning_string)
+        Args:
+            image_buffer: The display buffer to analyze.
+            manual_corners: Coordinates provided by UI manual override.
+            use_snap: If False, bypasses the Hough Line edge refinement.
         """
         height, width = image_buffer.shape[:2]
         reasoning = "Manual override used."
@@ -23,7 +27,6 @@ class ChartLocator:
         if manual_corners is not None:
             poly_points = manual_corners.astype(np.float32)
         else:
-            # UNPACK TUPLE HERE
             roi_result, reasoning = self.engine.detect_chart_roi(image_buffer)
             poly_points = self.engine.extract_polygons(roi_result, width, height)
         
@@ -31,7 +34,12 @@ class ChartLocator:
             print("[WARNING] Locator: Engine returned no points.")
             return None, reasoning
 
-        refined_points = self._refine_corners(image_buffer, poly_points)
+        # Toggle the snap logic here
+        if use_snap:
+            refined_points = self._refine_corners(image_buffer, poly_points)
+        else:
+            print("[DEBUG] Snap disabled: Using raw points.")
+            refined_points = poly_points
         
         return refined_points, reasoning
 
