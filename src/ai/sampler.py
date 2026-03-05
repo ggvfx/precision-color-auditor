@@ -10,7 +10,7 @@ import numpy as np
 
 from .locator import ChartLocator
 from .topology import ChartTopology
-from core.models import ColorPatch
+from core.models import ColorPatch, AuditResult  # Added AuditResult
 from core.config import settings
 
 class PatchSampler:
@@ -18,28 +18,34 @@ class PatchSampler:
         self.locator = ChartLocator(engine)
         self.topology = ChartTopology()
 
-    def sample_all(self, display_buffer: np.ndarray, audit_buffer: np.ndarray, source_path: str, manual_corners: np.ndarray = None) -> tuple:
+    def sample_all(self, display_buffer: np.ndarray, audit_buffer: np.ndarray, source_path: str, manual_corners: np.ndarray = None) -> AuditResult:
         """
         Dual-Branch Pipeline:
-        - Locates and Rectifies using display_buffer (Original look).
-        - Samples RGB values from audit_buffer (Linear ACEScg).
+        - Locates and Rectifies using display_buffer.
+        - Samples RGB values from audit_buffer.
+        - Returns an AuditResult object for UI and Auditor consumption.
         """
         template = settings.get_current_template()
 
-        # 1. Locate using the Display Buffer (so AI can see clearly)
+        # 1. Locate using the Display Buffer
         _, raw_points = self.locator.locate(display_buffer, manual_corners=manual_corners)
         
         if raw_points is None or len(raw_points) != 4:
-            return [], None, None
+            # Return an empty result if detection fails
+            return AuditResult(file_path=source_path, is_pass=False)
 
-        # 2. Rectify BOTH buffers using the same corner points
-        # This ensures the coordinates match perfectly between the two branches
+        # 2. Rectify BOTH buffers
         rect_display = self.topology.rectify(display_buffer, raw_points)
         rect_audit = self.topology.rectify(audit_buffer, raw_points)
 
-        # 3. Orientation Fix (Apply to both)
+        # 3. Orientation Fix (Apply to both branches)
         temp_coords = self.topology.analyze() 
-        rect_display = self.topology.verify_orientation(rect_display, temp_coords)
+        flipped_display = self.topology.verify_orientation(rect_display, temp_coords)
+        
+        # If the memory object changed, a flip was applied
+        if flipped_display is not rect_display:
+            rect_display = flipped_display
+            rect_audit = np.rot90(rect_audit, 2)
 
         # 4. Generate sample coordinates
         sample_coords = self.topology.analyze()
@@ -56,15 +62,11 @@ class PatchSampler:
 
             target_rgb = template.color_targets.get(target_key, [0.0, 0.0, 0.0])
 
-            # Define region
+            # Define region for sampling
             y_start, y_end = max(0, y - radius), min(rect_audit.shape[0], y + radius)
             x_start, x_end = max(0, x - radius), min(rect_audit.shape[1], x + radius)
             
-            # 2. Slice all 3 channels (R, G, B) from the audit buffer
-            # Since we fixed ColorEngine to reshape(h, w, 3), rect_audit is now 3D.
             patch_roi_audit = rect_audit[int(y_start):int(y_end), int(x_start):int(x_end), :]
-            
-            # Mean across Height and Width
             mean_color = np.mean(patch_roi_audit, axis=(0, 1))
 
             patch = ColorPatch(
@@ -76,17 +78,19 @@ class PatchSampler:
             )
             color_patches.append(patch)
 
-        # 6. Save Proof using the DISPLAY buffer (Correct original look)
-        file_stem = Path(source_path).stem
+        # 5. Create the "Audit View" Proof (Uint8 for UI/Display)
         qc_image = self.topology.generate_qc_image(rect_display, sample_coords)
-        qc_path = settings.output_dir / f"{file_stem}_RECTIFIED.png"
-        
-        # Ensure we write as uint8 for the display proof
         if qc_image.dtype != np.uint8:
             qc_image = (np.clip(qc_image, 0, 1) * 255).astype(np.uint8)
-            
-        cv2.imwrite(str(qc_path), cv2.cvtColor(qc_image, cv2.COLOR_RGB2BGR))
+
+        # 6. Build the Final AuditResult
+        result = AuditResult(
+            file_path=source_path,
+            corners=raw_points,
+            rectified_buffer=qc_image,
+            patches=color_patches
+        )
         
-        print(f"[SUCCESS] Sampled {len(color_patches)} patches. Proof: {file_stem}_RECTIFIED.png")
+        print(f"[SUCCESS] Prepared AuditResult for {Path(source_path).name} with {len(color_patches)} patches.")
         
-        return color_patches, rect_display, raw_points
+        return result

@@ -7,6 +7,7 @@ and technical audit metrics used across the DI/VFX pipeline.
 from dataclasses import dataclass, field
 from typing import List, Tuple, Optional
 import numpy as np
+from datetime import datetime
 
 
 @dataclass(frozen=False)
@@ -61,6 +62,7 @@ class AuditResult:
     file_path: str
     corners: Optional[np.ndarray] = None 
     rectified_path: Optional[str] = None
+    rectified_buffer: Optional[np.ndarray] = None
     delta_e_mean: float = 0.0
     delta_e_max: float = 0.0
     is_pass: bool = False
