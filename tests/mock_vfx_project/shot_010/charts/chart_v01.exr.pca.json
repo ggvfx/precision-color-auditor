@@ -1,0 +1,1 @@
+{"template": "Macbeth_24", "is_pass": true, "corners": [[0, 0], [100, 0], [100, 100], [0, 100]], "patches": [{"name": "A1", "delta_e": 0.2, "local_center": [50, 50]}]}
