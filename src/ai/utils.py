@@ -10,26 +10,44 @@ from PIL import Image
 
 def prep_for_pil(buffer: np.ndarray) -> Image.Image:
     """
-    Safely converts a NumPy float32 color buffer to a PIL Image.
-    Handles the 0.0-1.0 to 0-255 scaling.
+    Optimized conversion from float32/float16 buffers to uint8 PIL Images.
+    Used for high-frequency UI previews and AI detection.
     """
-    # Create a copy to avoid mutating the original buffer in memory
-    img_data = np.copy(buffer)
+    # 1. Fast Path: If already uint8 (0-255), just wrap it as a PIL image
+    if buffer.dtype == np.uint8:
+        return Image.fromarray(buffer)
     
-    # If the data is float, scale it up
-    if img_data.dtype.kind == 'f':
-        img_data = (np.clip(img_data, 0, 1) * 255).astype(np.uint8)
-    else:
-        img_data = img_data.astype(np.uint8)
-        
+    # 2. Performance Path: 
+    # Multiply and cast in a single expression to minimize intermediate copies.
+    # We use 255.0 to maintain precision before the integer floor.
+    img_data = (np.clip(buffer, 0, 1) * 255.0).astype(np.uint8)
+    
     return Image.fromarray(img_data)
 
 def normalize_for_ai(buffer: np.ndarray) -> np.ndarray:
     """
-    Standardizes a buffer for better AI feature detection.
-    Stretches contrast to help find gray patches in low light.
+    Standardizes a buffer for AI feature detection.
+    Stretches contrast based on image percentiles to aid detection in 
+    underexposed or log-encoded images.
     """
+    # Use a slightly faster approximation or keep percentiles for accuracy
+    # 2nd and 98th percentile helps ignore hot pixels/noise
     p2, p98 = np.percentile(buffer, (2, 98))
-    # Avoid division by zero
-    denom = (p98 - p2) if (p98 - p2) > 1e-5 else 1.0
-    return np.clip((buffer - p2) / denom, 0, 1)
+    
+    span = p98 - p2
+    if span < 1e-5:
+        return np.clip(buffer, 0, 1)
+        
+    # In-place math to save memory
+    normalized = buffer - p2
+    normalized /= span
+    return np.clip(normalized, 0, 1)
+
+def get_bytes_size(buffer: np.ndarray) -> str:
+    """Utility to track memory usage of EXR buffers in the session."""
+    size_bytes = buffer.nbytes
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if size_bytes < 1024:
+            return f"{size_bytes:.2f} {unit}"
+        size_bytes /= 1024
+    return f"{size_bytes:.2f} TB"

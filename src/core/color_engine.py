@@ -106,13 +106,15 @@ class ColorEngine:
             cpu = processor.getDefaultCPUProcessor()
 
             # 3. Wrap NumPy array in an OCIO Image Descriptor
-            # PackedImageDesc(data, width, height, numChannels)
             img_desc = OCIO.PackedImageDesc(data, w, h, 3)
 
             # 4. Apply the transform IN-PLACE on the 'data' array
             cpu.apply(img_desc)
 
-            # 5. Return the modified 'data' array, reshaped to (H, W, 3)
+            # 5. Clip values to 0.0 - 1.0 range for safety
+            np.clip(data, 0.0, 1.0, out=data)
+
+            # 6. Return the modified 'data' array, reshaped to (H, W, 3)
             return data.reshape(h, w, 3)
             
         except Exception as e:
@@ -130,3 +132,22 @@ class ColorEngine:
         audit_spaces = self.get_linear_audit_spaces()
         
         return source_spaces, audit_spaces
+    
+    def get_dual_buffers(self, raw_buffer: np.ndarray, result: 'AuditResult') -> tuple[np.ndarray, np.ndarray]:
+        """
+        Generates the two required buffers for the sampler:
+        1. Audit Buffer: Linear/ACEScg for math.
+        2. Display Buffer: sRGB for AI detection and UI display.
+        """
+        # Logic Gate: Use the override if it exists, otherwise the global default
+        input_space = result.input_space_override or settings.default_input_space
+        
+        # 1. Create the Audit Buffer (Linear)
+        audit_space = settings.default_input_space # Usually ACEScg
+        audit_buf = self.transform_buffer(raw_buffer, input_space, audit_space)
+        
+        # 2. Create the Display Buffer (sRGB)
+        display_space = settings.default_display_space # Usually sRGB
+        display_buf = self.transform_buffer(raw_buffer, input_space, display_space)
+        
+        return audit_buf, display_buf

@@ -80,8 +80,8 @@ class ChartTopology:
         # if Ratio < 1.0, it means the 'Bright' spot is actually the darker patch.
         ratio = val_bright / (val_dark + 1e-6)
 
-        if ratio < 1.0:
-            print(f"[DEBUG] Orientation: Flip Triggered (Ratio {ratio:.4f} < 1.0)")
+        if ratio < 0.98:
+            print(f"[DEBUG] Orientation: Flip Triggered (Ratio {ratio:.4f} < 0.98)")
             return np.rot90(rectified_image, 2)
         
         print(f"[DEBUG] Orientation: Correct (Ratio {ratio:.4f} >= 1.0)")
@@ -147,7 +147,7 @@ class ChartTopology:
         # Layer 1: Boundary Box (The 'Frame')
         if corners is not None:
             # Draw lines between corners: 0->1, 1->2, 2->3, 3->0
-            pts = corners.astype(np.int32).reshape((-1, 1, 2))
+            pts = np.array(corners).astype(np.int32).reshape((-1, 1, 2))
             cv2.polylines(qc_img, [pts], True, (0, 255, 255), 2) # Cyan/Yellow boundary
 
         # Layer 2: Sample Points (The 'Audit')

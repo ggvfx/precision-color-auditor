@@ -49,6 +49,11 @@ class AuditResult:
     file_path: str
     template_name: str = "macbeth_24"
     status: AuditStatus = AuditStatus.IDLE
+    # --- Per-Task Overrides ---
+    # These default to the Global settings if None
+    input_space: Optional[str] = None  # e.g. "ARRI LogC4"
+    display_space: Optional[str] = None # e.g. "Rec.709"
+    # --------------------------
     ai_reasoning: str = ""
     corners: Optional[np.ndarray] = None 
     rectified_path: Optional[str] = None

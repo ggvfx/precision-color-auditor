@@ -15,18 +15,7 @@ from .templates import CHART_LIBRARY, ChartTemplate
 @dataclass
 class Settings:
     """
-    Global settings for the Precision Color Auditor.
-    
-    Attributes:
-        app_root (Path): The root directory of the application.
-        default_ocio_path (Path): Path to the bundled ACES 1.3 config.
-        current_ocio_path (Path): The active OCIO config (defaults to bundled).
-        tolerance_threshold (float): Delta E (dE2000) limit before flagging a fail.
-        sample_size (int): The square size (in pixels) for mean patch sampling.
-        output_dir (Path): Default location for reports and CDL exports.
-        crops_dir (Path): Location for rectified QC images (Official Output).
-        rectified_size (Tuple): Standard resolution for the warped chart crop.
-        active_chart_type (str): Current template key (defaulting to 'macbeth_24').
+    Global settings and session-level defaults.
     """
     app_root: Path = Path(__file__).parent.parent.parent
     
@@ -34,53 +23,41 @@ class Settings:
     default_ocio_path: Path = field(init=False)
     current_ocio_path: Path = field(init=False)
     
+    # Default Input/Output Colorspaces (The 'Global' default)
+    default_input_space: str = "ACES - ACEScg"
+    default_display_space: str = "sRGB - Texture"
+    
     # Audit Thresholds
-    tolerance_threshold: float = 2.0  # Industry standard dE2000 'Noticeable' limit
-    sample_size: int = 32            # 32x32 pixel average to ignore sensor noise
+    tolerance_threshold: float = 2.0
+    sample_size: int = 32
 
     # Rectification & Topology Settings
-    # Standardizing the warp target ensures consistent sampling math
     rectified_size: Tuple[int, int] = (1200, 800) 
     active_chart_type: str = "macbeth_24"
 
-    def get_current_template(self) -> ChartTemplate:
-        """
-        Returns the active ChartTemplate object from the central library.
-        """
-        template = CHART_LIBRARY.get(self.active_chart_type)
-        
-        if not template:
-            # Fallback to Macbeth if something goes wrong
-            return CHART_LIBRARY["macbeth_24"]
-            
-        return template
-    
-    # Manual Draw Override Settings
-    use_manual_locator: bool = False
-    manual_corners: Optional[np.ndarray] = None
-
-    # New Official Output Directory
-    crops_dir: Path = field(init=False)
-    
-    # Export Settings
+    # Directory Management
     output_dir: Path = field(init=False)
+    session_logs_dir: Path = field(init=False)
 
     def __post_init__(self):
         """Initialize dynamic paths and ensure directories exist."""
         self.default_ocio_path = self.app_root / "src" / "resources" / "ocio" / "config.ocio"
         self.current_ocio_path = self.default_ocio_path
         
-        # Paths for Official Outputs
+        # Paths for Official Outputs & Logs
         self.output_dir = self.app_root / "exports"
-        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.session_logs_dir = self.app_root / "logs"
+        
+        # Ensure all required directories exist
+        for d in [self.output_dir, self.session_logs_dir]:
+            d.mkdir(parents=True, exist_ok=True)
+
+    def get_current_template(self) -> ChartTemplate:
+        """Returns the active ChartTemplate object."""
+        return CHART_LIBRARY.get(self.active_chart_type, CHART_LIBRARY["macbeth_24"])
 
     def update_ocio_config(self, custom_path: str):
-        """
-        Updates the active OCIO config if the file exists.
-        
-        Args:
-            custom_path (str): Path to the user-provided .ocio file.
-        """
+        """Updates the active OCIO config if the file exists."""
         path = Path(custom_path)
         if path.exists() and path.suffix == ".ocio":
             self.current_ocio_path = path
@@ -92,11 +69,8 @@ class Settings:
         signatures = {
             24: {"label": "Macbeth 24", "rows": 4, "cols": 6},
             12: {"label": "Grayscale 12", "rows": 1, "cols": 12},
-            # Add more as we expand
         }
         return signatures.get(patch_count)
 
-
 # Global Singleton Instance
-# Every module should import this instance: 'from core.config import settings'
 settings = Settings()
