@@ -3,10 +3,10 @@
 **Precision Color Auditor** is a professional, standalone calibration instrument designed for Digital Imaging Professionals, VFX Supervisors, and Photographers. By leveraging local computer vision models and template-driven geometric rectification, the tool automates the "ground truth" verification of digital images, identifying color drift and exposure errors while providing deterministic neutralization via non-destructive sidecar metadata.
 
 ## Project Status
-🚦 **Project Status:** Alpha (Dual-Branch Pipeline Validated)
+🚦 **Project Status:** Alpha (Phase 1–3 Validated)
 The project has established a robust, local AI inference pipeline using **Florence-2** for localization and a **Dual-Branch OCIO** engine that synchronizes AI vision with scene-linear math.
 
-**Current Milestone:** Validating the **OCIO Audit Engine** to calculate Delta E 2000 errors and ASC-CDL neutralization values.
+**Current Milestone:** Implementing **Professional Exports & Reporting** to generate ASC-CDL, 3D LUTs, and automated QA PDF/CSV reports.
 
 ## Strategic Roadmap
 
@@ -26,6 +26,7 @@ The project has established a robust, local AI inference pipeline using **Floren
 * **High-Performance OCIO v2:** Implementation of `PackedImageDesc` for zero-copy, in-place transformation of NumPy buffers.
 * **Template-Driven Targets:** Deterministic ground-truth comparison using a centralized `ChartTemplate` library for target RGB values.
 * **CDL Derivation:** Mathematical calculation of **Slope and Offset** (ASC-CDL) to align observed data with ground-truth targets.
+* **Delta E Analysis:** Integration of `colour-science` for dE2000 error quantification.
 
 ### Phase 4: Professional Exports & Reporting (Current)
 * **Neutralization Exporters:** Industry-standard **ASC-CDL** (.cdl, .cc) and **3D LUT** (.cube) generation.
