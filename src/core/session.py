@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import List, Optional, Dict
 
 from PySide6.QtCore import QObject, Signal, QThread, Slot
-from .models import AuditResult, ColorPatch
+from .models import AuditResult, AuditStatus, ColorPatch
 
 class AuditWorker(QObject):
     """
@@ -123,7 +123,8 @@ class SessionManager(QObject):
         try:
             with open(sidecar_path, 'r') as f:
                 data = json.load(f)
-            
+
+            # 1. Reconstruct the patches
             patches = [
                 ColorPatch(
                     name=p['name'],
@@ -135,9 +136,16 @@ class SessionManager(QObject):
                 ) for i, p in enumerate(data.get('patches', []))
             ]
 
+            # 2. Extract the status string and convert back to Enum
+            # Fallback to 'COMPLETE' if the status isn't in the JSON
+            status_str = data.get("status", "COMPLETE")
+            status_enum = AuditStatus[status_str]
+
+            # 3. Create the object
             self.results[image_path] = AuditResult(
                 file_path=image_path,
                 template_name=data.get('template', 'unknown'),
+                status=status_enum,  # Pass the value directly here
                 corners=np.array(data['corners']) if data['corners'] else None,
                 is_pass=data.get('is_pass', False),
                 patches=patches,
@@ -145,6 +153,18 @@ class SessionManager(QObject):
             )
         except Exception as e:
             print(f"[ERROR] Could not parse sidecar for {image_path}: {e}")
+
+    def mark_for_rerun(self, file_path: str, corners: np.ndarray):
+        """
+        Called when the user drags corners in the UI. 
+        Updates the model to MANUAL_EDIT state.
+        """
+        if file_path in self.results:
+            res = self.results[file_path]
+            res.corners = corners
+            res.status = AuditStatus.MANUAL_EDIT
+            # We don't save the sidecar yet—wait until the re-sample is 'COMPLETE'
+            self.image_updated.emit(file_path)
 
     def save_sidecar(self, file_path: str):
         """Saves AuditResult to a JSON file next to the original image."""
@@ -158,6 +178,7 @@ class SessionManager(QObject):
         payload = {
             "template": res.template_name,
             "is_pass": res.is_pass,
+            "status": res.status.name,
             "corners": res.corners.tolist() if res.corners is not None else None,
             "patches": [
                 {

@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import List, Tuple, Optional
 import numpy as np
 from datetime import datetime
+from enum import Enum, auto
 
 
 @dataclass(frozen=False)
@@ -36,10 +37,18 @@ class ColorPatch:
         if self.target_rgb.dtype != np.float32 and self.target_rgb.dtype != np.float64:
             object.__setattr__(self, 'target_rgb', self.target_rgb.astype(np.float32))
 
+class AuditStatus(Enum):
+    IDLE = auto()          # Just loaded, no math done yet
+    PENDING = auto()       # Currently in the AI/Sampler queue
+    COMPLETE = auto()      # Successfully processed
+    MANUAL_EDIT = auto()   # User moved corners; needs a re-sample
+    FAILED = auto()        # AI couldn't find a chart
+
 @dataclass
 class AuditResult:
     file_path: str
     template_name: str = "macbeth_24"
+    status: AuditStatus = AuditStatus.IDLE
     ai_reasoning: str = ""
     corners: Optional[np.ndarray] = None 
     rectified_path: Optional[str] = None
