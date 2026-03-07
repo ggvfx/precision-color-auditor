@@ -132,13 +132,67 @@ class Auditor:
         return result
     
     def _solve_color(self, result: AuditResult, index_map: dict, neutral_indices: list) -> AuditResult:
-        """TIER 4: Macbeth. Neutralization CDL + Future Matrix Profiling."""
-        # 1. First, neutralize using the ramp (Row 4 of the Macbeth)
+        """TIER 4: Macbeth. Neutralization CDL + Matrix Profiling."""
+        # 1. First, solve the 1D neutralization (Slope/Offset)
         result = self._solve_ramp(result, index_map, neutral_indices)
         
-        # 2. PLACEHOLDER: Full Color Matrix
-        # Compare the 18 color patches (observed vs target) to solve for a 3x3 matrix.
-        # result.matrix_3x3 = self._solve_3x3_matrix(result)
+        # 2. Then, solve the 3x3 Color Matrix
+        result = self._solve_3x3_matrix(result)
+        
+        return result
+    
+    def _solve_3x3_matrix(self, result: AuditResult) -> AuditResult:
+        """
+        TIER 4: Macbeth Full Profiling.
+        Solves for a 3x3 matrix using the 18 color patches.
+        """
+        # 1. Gather color patches (Indices 0-17 on a Macbeth 24)
+        obs_list = []
+        targ_list = []
+        
+        # We only use color patches for the matrix to avoid skewing the neutrals
+        for p in result.patches:
+            if p.index < 18:
+                obs_list.append(p.observed_rgb)
+                targ_list.append(p.target_rgb)
+        
+        if len(obs_list) < 3:
+            return result # Need at least 3 colors to solve a 3x3
+
+        # 2. Prepare Data
+        # We use the same intent logic as the CDL
+        obs = np.array(obs_list)
+        targ = np.array(targ_list)
+        
+        x_data, y_data = self._get_regression_data(obs, targ, result.analysis_intent)
+
+        # 3. Solve for Matrix M using Linear Least Squares
+        # y = x * M  -> M = (x^T * x)^-1 * x^T * y
+        # In NumPy: linalg.lstsq solves for the matrix that minimizes squared error
+        matrix, residuals, rank, s = np.linalg.lstsq(x_data, y_data, rcond=None)
+        
+        # Transpose if necessary depending on your engine's multiplication order
+        # Most VFX engines (Nuke/OCIO) use: [R, G, B] * Matrix
+        result.matrix_3x3 = matrix.astype(np.float32)
+
+        # --- New: Calculate Residual Delta E ---
+        # Apply the matrix to all color patches to see how well it worked
+        errors = []
+        for p in result.patches:
+            if p.index < 18: # Only check color patches
+                # Apply matrix: [1x3] * [3x3] = [1x3]
+                corrected_rgb = np.dot(p.observed_rgb, result.matrix_3x3)
+                
+                # Simple Euclidean Distance (Delta E approximation in Linear Space)
+                # For high-accuracy, we would convert to Lab, but this is 
+                # excellent for relative "Post-Matrix" validation.
+                diff = corrected_rgb - p.target_rgb
+                de = np.sqrt(np.sum(diff**2))
+                errors.append(de)
+
+        if errors:
+            result.delta_e_mean = float(np.mean(errors))
+            result.delta_e_max = float(np.max(errors))
         
         return result
 
