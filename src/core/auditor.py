@@ -157,6 +157,10 @@ class Auditor:
     def perform_audit(self, audit_result: AuditResult) -> AuditResult:
         if not audit_result.patches: return audit_result
 
+        # --- TASK 1: DNA VERIFICATION ---
+        dna_valid = self.verify_dna(audit_result)
+        # --------------------------------
+
         total_de = 0.0
         max_de = 0.0
 
@@ -169,9 +173,45 @@ class Auditor:
         count = len(audit_result.patches)
         audit_result.delta_e_mean = total_de / count if count > 0 else 0.0
         audit_result.delta_e_max = max_de
-        audit_result.is_pass = audit_result.delta_e_mean <= settings.tolerance_threshold
+        # Audit passes ONLY if Delta E is low AND the DNA check passed
+        audit_result.is_pass = (audit_result.delta_e_mean <= settings.tolerance_threshold) and dna_valid
         
         if not audit_result.timestamp:
             audit_result.timestamp = datetime.now().isoformat()
 
         return self.calculate_cdl_correction(audit_result)
+    
+    def verify_dna(self, result: AuditResult) -> bool:
+        """
+        Relational Integrity: Does the found grid behave like the template?
+        Checks for descending luminance AND a minimum contrast threshold.
+        """
+        neutrals = result.get_neutral_patches()
+        
+        # If we find 0 patches, we have a locator failure.
+        if len(neutrals) < 2: 
+            result.ai_reasoning += " | CRITICAL: No neutral patches found."
+            return False
+        
+        lums = [np.dot(p.observed_rgb, [0.2126, 0.7152, 0.0722]) for p in neutrals]
+        
+        # 1. Monotonicity (The Direction)
+        is_monotonic = all(x >= (y - 0.005) for x, y in zip(lums, lums[1:]))
+        
+        # 2. Dynamic Range (The Magnitude)
+        # A real Macbeth white-to-black ramp drops by roughly 2.0 stops or more.
+        # We expect a minimum luminance spread of at least 0.1 in ACEScg.
+        total_range = max(lums) - min(lums)
+        is_dynamic = total_range > 0.1 
+
+        if not is_monotonic:
+            result.ai_reasoning += " | CRITICAL: DNA Failure (Non-linear ramp)."
+            result.alignment_integrity = 0.0 
+            return False
+
+        if not is_dynamic:
+            result.ai_reasoning += f" | CRITICAL: DNA Failure (No contrast - Flat Signal: {total_range:.3f})."
+            result.alignment_integrity = 0.0
+            return False
+            
+        return True

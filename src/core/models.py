@@ -29,6 +29,10 @@ class ColorPatch:
     local_center: Tuple[int, int]
     index: int
     delta_e: float = 0.0
+    # Geometric Health
+    # Stores the standard deviation of pixels in the sample box
+    sample_variance: float = 0.0
+    is_contaminated: bool = False
 
     def __post_init__(self):
         """Validates that RGB data is stored as high-precision floats."""
@@ -61,6 +65,11 @@ class AuditResult:
     delta_e_mean: float = 0.0
     delta_e_max: float = 0.0
     is_pass: bool = False
+
+    # New Fields for Intent and Integrity
+    analysis_intent: str = "neutralize" # Snapshot of setting used
+    alignment_integrity: float = 1.0     # 0.0 to 1.0 (1.0 = Perfect)
+    integrity_warning: bool = False      # UI Flag for "Check Corners"
     
     # ASC-CDL Neutralization Values
     slope: np.ndarray = field(default_factory=lambda: np.array([1.0, 1.0, 1.0], dtype=np.float32))

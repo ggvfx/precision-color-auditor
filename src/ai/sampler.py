@@ -61,6 +61,8 @@ class PatchSampler:
         color_patches = []
         radius = template.sample_size // 2
 
+        total_contamination_flags = 0
+
         for i, (y, x) in enumerate(sample_coords):
             target_key = list(template.anchors.keys())[i] if template.topology == "anchored" else i
             target_rgb = template.color_targets.get(target_key, [0.0, 0.0, 0.0])
@@ -69,14 +71,33 @@ class PatchSampler:
             y_s, y_e = max(0, int(y - radius)), min(rect_audit.shape[0], int(y + radius))
             x_s, x_e = max(0, int(x - radius)), min(rect_audit.shape[1], int(x + radius))
             
-            mean_color = np.mean(rect_audit[y_s:y_e, x_s:x_e, :], axis=(0, 1))
+            roi = rect_audit[y_s:y_e, x_s:x_e, :]
+            
+            # --- INTEGRITY CHECK: INTERNAL VARIANCE ---
+            # np.std tells us if the pixels are consistent. High std = noise or bezel.
+            pixel_variance = np.mean(np.std(roi, axis=(0, 1)))
+            
+            # --- INTEGRITY CHECK: CORE VS RING ---
+            # Compare inner 50% to full sample. If they differ, we're hitting an edge.
+            h, w, _ = roi.shape
+            core_roi = roi[h//4:-h//4, w//4:-w//4, :]
+            core_mean = np.mean(core_roi, axis=(0, 1))
+            full_mean = np.mean(roi, axis=(0, 1))
+            
+            edge_drift = np.mean(np.abs(core_mean - full_mean))
+            
+            # Contamination logic
+            is_bad = (pixel_variance > settings.integrity_threshold) or (edge_drift > 0.02)
+            if is_bad: total_contamination_flags += 1
 
             patch = ColorPatch(
                 name=f"Patch_{target_key}", 
-                observed_rgb=mean_color.astype(np.float32),
+                observed_rgb=full_mean.astype(np.float32),
                 target_rgb=np.array(target_rgb, dtype=np.float32),
                 local_center=(int(x), int(y)),
-                index=i
+                index=i,
+                sample_variance=pixel_variance,
+                is_contaminated=is_bad
             )
             color_patches.append(patch)
 
@@ -86,16 +107,22 @@ class PatchSampler:
         qc_image_uint8 = np.array(prep_for_pil(qc_image_raw))
 
         # 6. Build and Return the Final AuditResult
-        # We assume if we got here, status is COMPLETE (unless it was a MANUAL_EDIT)
+        # If manual_corners exists, it's a MANUAL_EDIT. Otherwise, it's COMPLETE.
         final_status = AuditStatus.MANUAL_EDIT if manual_corners is not None else AuditStatus.COMPLETE
+        
+        # Calculate final integrity score for the result
+        integrity_score = 1.0 - (total_contamination_flags / len(color_patches))
 
         return AuditResult(
             file_path=source_path,
             template_name=template.name,
-            status=final_status,
+            status=final_status, # Preserved your status logic
             corners=raw_points,
             rectified_buffer=qc_image_uint8,
             patches=color_patches,
             ai_reasoning=reasoning,
-            is_pass=True # Baseline; Auditor logic will flip this if DeltaE is high
+            alignment_integrity=integrity_score,
+            integrity_warning=integrity_score < 1.0,
+            analysis_intent=settings.analysis_intent, 
+            is_pass=True # Auditor will finalize this based on Delta E and DNA
         )

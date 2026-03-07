@@ -39,6 +39,15 @@ class Settings:
     output_dir: Path = field(init=False)
     session_logs_dir: Path = field(init=False)
 
+    # Analysis Mode
+    # Options: "neutralize" (Fix the image) or "match_grade" (Extract the look)
+    analysis_intent: str = "neutralize" 
+    
+    # Alignment Integrity (Geometric Health)
+    # Threshold for standard deviation in a patch sample. 
+    # Values above this suggest the sample box hit a bezel or border.
+    integrity_threshold: float = 0.05
+
     def __post_init__(self):
         """Initialize dynamic paths and ensure directories exist."""
         self.default_ocio_path = self.app_root / "src" / "resources" / "ocio" / "config.ocio"
