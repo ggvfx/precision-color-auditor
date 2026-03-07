@@ -56,56 +56,50 @@ class Auditor:
         print("WARNING: No mode matched. Returning identity.") 
         return audit_result
 
+    def _get_regression_data(self, obs: np.ndarray, targ: np.ndarray, intent: str):
+        """Helper to swap X/Y based on user intent."""
+        if intent == "extract_grade":
+            return targ, obs  # Mapping Target -> Observed (How was this grade made?)
+        return obs, targ      # Mapping Observed -> Target (How do I fix this?)
+
     def _solve_gain(self, result: AuditResult) -> AuditResult:
-        """TIER 1: Single patch balance (Slope only, Offset 0)."""
+        """TIER 1: Single patch balance."""
         if not result.patches: return result
         
-        # Grab the primary patch (usually center or index 0)
         obs = result.patches[0].observed_rgb
         targ = result.patches[0].target_rgb
         
-        # Calculate suggested Gain
-        result.slope = np.clip(targ / (obs + 1e-6), 0.0, 4.0).astype(np.float32)
+        # Apply intent swap
+        x, y = self._get_regression_data(obs, targ, result.analysis_intent)
         
-        # Ensure Offset and Power are strictly identity
+        # Slope = Y / X (with epsilon to avoid division by zero)
+        result.slope = np.clip(y / (x + 1e-6), 0.0, 4.0).astype(np.float32)
         result.offset = np.zeros(3, dtype=np.float32)
         result.power = np.ones(3, dtype=np.float32)
         
         return result
 
     def _solve_anchors(self, result: AuditResult, patch_map: dict) -> AuditResult:
-        """TIER 2: Anchor Set. Uses the PINNED template name."""
-        template = CHART_LIBRARY.get(result.template_name, CHART_LIBRARY["macbeth_24"])
+        """TIER 2: Kodak / Anchor Set. Linear fit through pinned patches."""
+        template = CHART_LIBRARY.get(result.template_name)
         neutral_names = template.neutral_indices
 
-        # DIAGNOSTIC PRINTS
-        print(f"DEBUG: Active Template: {template.name}")
-        print(f"DEBUG: Looking for Neutrals: {neutral_names}")
-        print(f"DEBUG: Keys in Patch Map: {list(patch_map.keys())}")
-        
-        obs_list = []
-        targ_list = []
-
+        obs_list, targ_list = [], []
         for name in neutral_names:
-            # Normalize the search key to match our map
             search_key = str(name).strip().lower()
             p = patch_map.get(search_key)
-            
             if p:
                 obs_list.append(p.observed_rgb)
                 targ_list.append(p.target_rgb)
-            else:
-                print(f"DEBUG: Failed to find patch for neutral key: {search_key}")
 
-        if len(obs_list) < 2: 
-            return result # Not enough data to draw a line
+        if len(obs_list) < 2: return result
 
-        obs = np.array(obs_list)
-        targ = np.array(targ_list)
+        # Apply intent swap to the arrays
+        x_data, y_data = self._get_regression_data(np.array(obs_list), np.array(targ_list), result.analysis_intent)
 
         slopes, offsets = [], []
         for i in range(3):
-            m, c = np.polyfit(obs[:, i], targ[:, i], 1)
+            m, c = np.polyfit(x_data[:, i], y_data[:, i], 1)
             slopes.append(m)
             offsets.append(c)
 
@@ -115,9 +109,7 @@ class Auditor:
 
     def _solve_ramp(self, result: AuditResult, index_map: dict, neutral_indices: list) -> AuditResult:
         """TIER 3/4: Macbeth/Ramp Style. Regression fit through multiple points."""
-        obs_list = []
-        targ_list = []
-
+        obs_list, targ_list = [], []
         for idx in neutral_indices:
             p = index_map.get(idx)
             if p:
@@ -126,21 +118,17 @@ class Auditor:
 
         if len(obs_list) < 2: return result
 
-        obs = np.array(obs_list)
-        targ = np.array(targ_list)
+        # Apply intent swap
+        x_data, y_data = self._get_regression_data(np.array(obs_list), np.array(targ_list), result.analysis_intent)
 
-        # Use Linear Regression (polyfit) for best-fit Slope/Offset across all ramp points
         slopes, offsets = [], []
         for i in range(3):
-            m, c = np.polyfit(obs[:, i], targ[:, i], 1)
+            m, c = np.polyfit(x_data[:, i], y_data[:, i], 1)
             slopes.append(m)
             offsets.append(c)
 
         result.slope = np.clip(slopes, 0.0, 4.0).astype(np.float32)
         result.offset = np.clip(offsets, -1.0, 1.0).astype(np.float32)
-        
-        # Note: 'color' mode (Macbeth) uses this CDL, but can be extended 
-        # later to generate a 3D LUT via the color patches.
         return result
     
     def _solve_color(self, result: AuditResult, index_map: dict, neutral_indices: list) -> AuditResult:

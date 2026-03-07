@@ -48,5 +48,54 @@ def test_integrity():
     print(f"\nTest 2 (Bezel Hit): Variance = {pixel_variance:.4f}")
     print(f"SUCCESS: Patch flagged as contaminated: {is_contaminated}")
 
+def test_intent_inversion():
+    auditor = Auditor()
+    
+    # Patch 18: White (Observed is 0.5, Target is 1.0)
+    p18 = ColorPatch(
+        name="Patch_18", 
+        observed_rgb=np.array([0.5, 0.5, 0.5], dtype=np.float32), 
+        target_rgb=np.array([1.0, 1.0, 1.0], dtype=np.float32), 
+        local_center=(0, 0),
+        index=18
+    )
+
+    # Patch 23: Black (Observed is 0.01, Target is 0.02)
+    # Both patches follow the "Observed is half of Target" rule
+    p23 = ColorPatch(
+        name="Patch_23", 
+        observed_rgb=np.array([0.01, 0.01, 0.01], dtype=np.float32), 
+        target_rgb=np.array([0.02, 0.02, 0.02], dtype=np.float32), 
+        local_center=(0, 0),
+        index=23
+    )
+
+    # Scenario A: Neutralize
+    res_neut = AuditResult(
+        file_path="test.exr", 
+        patches=[p18, p23], 
+        analysis_intent="neutralize",
+        template_name="macbeth_24"
+    )
+    res_neut = auditor.calculate_cdl_correction(res_neut)
+    
+    # Scenario B: Extract Grade
+    res_extract = AuditResult(
+        file_path="test.exr", 
+        patches=[p18, p23], 
+        analysis_intent="extract_grade",
+        template_name="macbeth_24"
+    )
+    res_extract = auditor.calculate_cdl_correction(res_extract)
+
+    print(f"\nTest 3 (Intent Inversion):")
+    print(f"  Neutralize Slope: {res_neut.slope[0]:.2f} (Expected: 2.00)")
+    print(f"  Extract Grade Slope: {res_extract.slope[0]:.2f} (Expected: 0.50)")
+
+    assert np.isclose(res_neut.slope[0], 2.0, atol=0.01)
+    assert np.isclose(res_extract.slope[0], 0.5, atol=0.01)
+    print("SUCCESS: Intent Inversion logic is mathematically sound.")
+
 if __name__ == "__main__":
     test_integrity()
+    test_intent_inversion()
