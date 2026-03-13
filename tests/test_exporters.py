@@ -110,8 +110,9 @@ def test_csv_export():
         matrix_3x3=np.identity(3),
         delta_e_mean=0.00004,
         analysis_intent="match_grade",
-        input_space="ARRI LogC4",  # Specific example
-        target_space="Rec.709",    # Using renamed field
+        input_space="ARRI LogC4",
+        audit_space="ACES - ACEScg",
+        display_space="sRGB - Texture",
         corners=np.array([[10,10], [100,10], [100,80], [10,80]]),
         timestamp=datetime.now().isoformat()
     )
@@ -143,6 +144,10 @@ def test_pdf_export():
         ) for i in range(24)
     ]
 
+    for p in dummy_patches:
+        p.visual_src_rgb = p.observed_rgb
+        p.visual_ref_rgb = p.target_rgb
+
     # 2. Setup the result object
     res = AuditResult(
         file_path="D:/VFX/Shot_01.exr",
@@ -156,7 +161,8 @@ def test_pdf_export():
         matrix_3x3=np.identity(3),
         analysis_intent="match_grade",
         input_space="ARRI LogC4",
-        target_space="Rec.709",
+        audit_space="ACES - ACEScg",
+        display_space="sRGB - Texture",
         timestamp=datetime.now().isoformat(),
         patches=dummy_patches
     )

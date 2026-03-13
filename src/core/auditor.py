@@ -258,3 +258,26 @@ class Auditor:
             return False
             
         return True
+    
+    def apply_visual_correction(self, result: AuditResult):
+        """
+        Prepares RGBs for the split-triangle view in UI/PDF.
+        Uses the intent to decide which side gets the 'correction'.
+        """
+        for p in result.patches:
+            # Determine the 'source' to be corrected
+            if result.analysis_intent == "neutralize":
+                # We want to see if the Plate can match the Reference
+                src_rgb = p.observed_rgb
+                ref_rgb = p.target_rgb
+            else:
+                # Match Grade: Can the Reference match the Plate?
+                src_rgb = p.target_rgb
+                ref_rgb = p.observed_rgb
+
+            # Apply SOP + Matrix (Tier-dependent)
+            corrected = self.color_engine.apply_math(src_rgb, result)
+            
+            # Store for the Exporter
+            p.visual_src_rgb = corrected  # The 'Adjusted' side
+            p.visual_ref_rgb = ref_rgb    # The 'Target' side

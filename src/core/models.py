@@ -34,6 +34,9 @@ class ColorPatch:
     sample_variance: float = 0.0
     is_contaminated: bool = False
 
+    visual_src_rgb: Optional[np.ndarray] = None
+    visual_ref_rgb: Optional[np.ndarray] = None
+
     def __post_init__(self):
         """Validates that RGB data is stored as high-precision floats."""
         if self.observed_rgb.dtype != np.float32 and self.observed_rgb.dtype != np.float64:

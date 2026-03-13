@@ -30,7 +30,7 @@ class ReportGenerator:
             "timestamp", "hostname", "user", "version",
             "file_path", "camera_make", "camera_model",
             "template", "analysis_intent", 
-            "input_space", "display_space",
+            "input_space", "audit_space", "display_space",
             "integrity_score", "de_mean", "de_max",
             "slope_r", "slope_g", "slope_b",
             "offset_r", "offset_g", "offset_b",
@@ -48,6 +48,7 @@ class ReportGenerator:
             result.file_path, result.camera_make, result.camera_model,
             result.template_name, result.analysis_intent,
             result.input_space or settings.default_input_space,
+            result.audit_space or settings.default_audit_space,
             result.display_space or settings.default_display_space,
             f"{result.alignment_integrity:.4f}",
             f"{result.delta_e_mean:.6f}", f"{result.delta_e_max:.6f}",
@@ -96,59 +97,96 @@ class AuditPDF(FPDF):
             ["Camera Info", f"{res.camera_make} {res.camera_model}"],
             ["Analysis Intent", res.analysis_intent.upper()],
             ["Input Space", res.input_space or settings.default_input_space],
-            ["Target Space", res.target_space or settings.default_target_space],
+            ["Audit Space", res.audit_space or settings.default_audit_space],
+            ["Display Space", res.display_space or settings.default_display_space],
             ["Integrity Score", f"{res.alignment_integrity:.4f}"],
-            ["Timestamp", res.timestamp]
+            ["Timestamp", str(res.timestamp)]
         ]
         
-        for row in data:
+        for i, row in enumerate(data):
             self.set_fill_color(245, 245, 245)
             self.cell(40, 6, row[0], border=1, fill=True)
+            
+            # Check if it's the last row
+            is_last = (i == len(data) - 1)
+            
+            # Use ln=True for all but the last row, or reset manually
             self.cell(150, 6, str(row[1]), border=1, ln=True)
-        self.ln(5)
+
+        # Force a small gap after the table is fully drawn
+        self.ln(2)
 
     def draw_patch_grid(self, res):
         self.set_font("Helvetica", "B", 12)
-        self.cell(0, 10, "2. Visual Verification (Diagonal Split: Plate vs Target)", ln=True)
         
-        start_x, start_y = 20, 95
+        # 1. Dynamic Header and Legend
+        intent_label = "Neutralize" if res.analysis_intent == "neutralize" else "Match Grade"
+        self.cell(0, 10, f"2. Visual Verification (Intent: {intent_label})", ln=True)
+        
+        # Key for the user
+        self.set_font("Helvetica", "", 9)
+        if res.analysis_intent == "neutralize":
+            left_txt = "Left: Neutralized Plate (Corrected)"
+            right_txt = "Right: Target Values (Reference)"
+        else:
+            left_txt = "Left: Match Grade (Corrected Target)"
+            right_txt = "Right: Input Plate (Observed)"
+            
+        self.cell(0, 5, f"{left_txt}  |  {right_txt}", ln=True)
+        self.ln(5)
+
+        start_x, start_y = 20, self.get_y()
         size = 22
 
         template = CHART_LIBRARY.get(res.template_name)
         
-        # Determine Grid Dimensions
         if template and template.topology == "grid":
             cols, rows = template.grid
         else:
-            # Fallback for 'anchored' charts (like Gray Card Plus)
             cols = 5 
             rows = (len(res.patches) // 5) + 1
         
         def to_8bit(val):
-            # Applying 2.2 Gamma for the PDF preview
             return int(np.clip(val ** (1/2.2), 0, 1) * 255)
 
         for i, p in enumerate(res.patches):
             col = i % 6
             row = i // 6
             x = start_x + (col * (size + 4))
-            y = start_y + (row * (size + 4))
+            y = start_y + (row * (size + 2))
 
-            # Plate/Observed Triangle
-            self.set_fill_color(*[to_8bit(c) for c in p.observed_rgb])
+            # --- DYNAMIC TRIANGLE ASSIGNMENT ---
+            # Based on the logic in Auditor.apply_visual_correction
+            # visual_src_rgb is the 'Corrected' side
+            # visual_ref_rgb is the 'Reference/Goal' side
+            
+            fill_left = getattr(p, 'visual_src_rgb', None) if getattr(p, 'visual_src_rgb', None) is not None else p.observed_rgb
+            fill_right = getattr(p, 'visual_ref_rgb', None) if getattr(p, 'visual_ref_rgb', None) is not None else p.target_rgb
+
+            # Ultimate safety fallback if even observed/target are None
+            if fill_left is None: fill_left = np.array([0,0,0])
+            if fill_right is None: fill_right = np.array([0,0,0])
+
+            # Draw Left Triangle (Corrected Side)
+            self.set_fill_color(*[to_8bit(c) for c in fill_left])
             self.polygon([(x, y), (x + size, y), (x, y + size)], fill=True)
             
-            # Target/Reference Triangle
-            self.set_fill_color(*[to_8bit(c) for c in p.target_rgb])
+            # Draw Right Triangle (Reference Side)
+            self.set_fill_color(*[to_8bit(c) for c in fill_right])
             self.polygon([(x + size, y), (x + size, y + size), (x, y + size)], fill=True)
             
             self.set_draw_color(100, 100, 100)
             self.rect(x, y, size, size)
         
-        self.ln(115) # Ensure text doesn't overlap the grid
+        cols = 6
+        rows = (len(res.patches) + (cols - 1)) // cols
+        grid_height = rows * (size + 2)
+        self.set_y(start_y + grid_height + 10)
 
     def draw_technical_data(self, res):
-        self.set_font("Courier", "B", 10)
+        if self.get_y() > 250:
+            self.add_page()
+        self.set_font("Helvetica", "B", 12)
         self.cell(0, 10, "3. Mathematical Results", ln=True)
         
         # Use a single Multi-cell for the whole block to keep it contained
@@ -164,4 +202,4 @@ class AuditPDF(FPDF):
             f"  [{m[2][0]:.3f}, {m[2][1]:.3f}, {m[2][2]:.3f}]"
         )
         self.set_font("Courier", "", 9)
-        self.multi_cell(0, 5, tech_text, border=1, fill=True)
+        self.multi_cell(0, 5, tech_text, border=1, fill=False)
