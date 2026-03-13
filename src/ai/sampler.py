@@ -30,8 +30,12 @@ class PatchSampler:
         """
         template = settings.get_current_template()
 
+        # --- TEMPORARY TEST SABOTAGE ---
+        #test_display = display_buffer * 0.01  # Make the UI view nearly pitch black
+        #print("[TEST] Sabotaging display_buffer to simulate a dark LUT...")
+
         # 1. Locate using the Display Buffer
-        raw_points, reasoning = self.locator.locate(display_buffer, manual_corners=manual_corners, use_snap=use_snap)
+        raw_points, reasoning = self.locator.locate(display_buffer, audit_buffer, manual_corners=manual_corners, use_snap=use_snap)
         
         # Handle Failure Case
         if raw_points is None or len(raw_points) != 4:

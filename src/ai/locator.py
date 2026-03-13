@@ -13,30 +13,33 @@ class ChartLocator:
     def __init__(self, engine):
         self.engine = engine
 
-    def locate(self, image_buffer: np.ndarray, manual_corners: np.ndarray = None, use_snap: bool = True) -> tuple[np.ndarray, str]:
+    def locate(self, display_buffer: np.ndarray, audit_buffer: np.ndarray, 
+            manual_corners: np.ndarray = None, use_snap: bool = True) -> tuple[np.ndarray, str]:
         """
         Returns: (refined_points, ai_reasoning_string)
         Args:
-            image_buffer: The display buffer to analyze.
+            display_buffer: The buffer with OCIO display transform.
+            audit_buffer: The raw linear buffer (ACEScg).
             manual_corners: Coordinates provided by UI manual override.
             use_snap: If False, bypasses the Hough Line edge refinement.
         """
-        height, width = image_buffer.shape[:2]
-        reasoning = "Manual override used."
+        height, width = display_buffer.shape[:2]
         
         if manual_corners is not None:
             poly_points = manual_corners.astype(np.float32)
+            reasoning = "Manual override used."
         else:
-            roi_result, reasoning = self.engine.detect_chart_roi(image_buffer)
+            # Use the fallback method instead of detect_chart_roi
+            roi_result, reasoning = self.engine.detect_with_fallback(display_buffer, audit_buffer)
             poly_points = self.engine.extract_polygons(roi_result, width, height)
         
         if poly_points is None or len(poly_points) == 0:
             print("[WARNING] Locator: Engine returned no points.")
             return None, reasoning
 
-        # Toggle the snap logic here
         if use_snap:
-            refined_points = self._refine_corners(image_buffer, poly_points)
+            # We still use display_buffer for snapping as it's best for traditional CV
+            refined_points = self._refine_corners(display_buffer, poly_points)
         else:
             print("[DEBUG] Snap disabled: Using raw points.")
             refined_points = poly_points

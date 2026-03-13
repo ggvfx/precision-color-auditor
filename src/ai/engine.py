@@ -27,6 +27,43 @@ class ChartDetector:
         )
         print(f"[SUCCESS] Florence-2 ready on {self.device}")
 
+    def detect_with_fallback(self, display_buffer, audit_buffer):
+        """
+        Tries to find the chart using the display buffer first.
+        If it fails, it applies a safety gamma to the audit buffer.
+        """
+        # Pass 1: The User's Display Space
+        result, reasoning = self.detect_chart_roi(display_buffer)
+        
+        # --- NEW SMARTER SUCCESS CHECK ---
+        is_success = False
+        data = result.get("<CAPTION_TO_PHRASE_GROUNDING>", {})
+        bboxes = data.get("bboxes", [])
+        
+        if bboxes:
+            box = bboxes[0] # [xmin, ymin, xmax, ymax]
+            # Calculate how much of the image this box covers (0-1000 scale)
+            # A chart almost never fills 95% of the frame in an audit.
+            width_norm = box[2] - box[0]
+            height_norm = box[3] - box[1]
+            coverage = (width_norm * height_norm) / (1000 * 1000)
+            
+            # If box is valid AND not just the full frame hallucination
+            if coverage < 0.95:
+                is_success = True
+
+        if is_success:
+            return result, reasoning
+            
+        # Pass 2: Safety Fallback
+        print("[AI] Display space detection failed or weak (Full-frame hallucination). Attempting Safety Gamma...")
+        
+        # Apply the 2.2 gamma shift to the Linear ACEScg buffer
+        safety_buffer = np.power(np.clip(audit_buffer, 0, 1), 1/2.2)
+        
+        res_fb, reason_fb = self.detect_chart_roi(safety_buffer)
+        return res_fb, f"[FALLBACK-MODE] {reason_fb}"
+
     def detect_chart_roi(self, image_array: np.ndarray) -> tuple[dict, str]:
         """
         Runs Florence-2 detection and returns both the parsed coordinates 
