@@ -28,10 +28,15 @@ The project has established a robust, local AI inference pipeline using **Floren
 * **CDL Derivation:** Mathematical calculation of **Slope and Offset** (ASC-CDL) to align observed data with ground-truth targets.
 * **Delta E Analysis:** Integration of `colour-science` for dE2000 error quantification.
 
-### Phase 4: Professional Exports & Reporting (Current)
-* **Neutralization Exporters:** Industry-standard **ASC-CDL** (.cdl, .cc) and **3D LUT** (.cube) generation.
-* **Human-in-the-Loop UI:** PySide6 interface for manual corner refinement and "QC Crop" verification.
-* **Automated QA Reporting:** Generation of CSV and PDF reports for production hand-offs and VFX plate delivery.
+### Phase 4: Professional Exports & Reporting (Complete)
+* **Neutralization and Match Grade Exporters:** Generation of industry-standard **ASC-CDL** (.cdl) and **3D LUT** (.cube) files.
+* **Automated QA Reporting:** Professional PDF reports featuring visual split-patch verification and CSV technical logs.
+* **Mathematical Validation:** Verified matrix-based color transforms and CDL SOP operations.
+
+### Phase 5: Human-in-the-Loop UI (Current)
+* **Interactive Refinement:** PySide6 interface for manual corner adjustment and "QC Crop" verification.
+* **Real-time Feedback:** Live Delta E visualizations and "Before/After" neutralization previews.
+* **Batch Processing:** Headless and GUI-driven workflows for multi-shot plate audits.
 
 ## 🚀 Overview
 The **Precision Color Auditor** eliminates "color drift" at the source. By moving beyond visual "eye-balling" and into deterministic signal analysis, it empowers color-critical professionals to ensure every plate matches a mathematical ideal before production begins.

@@ -27,3 +27,4 @@ accelerate>=0.26.0
 
 # Data & Reporting
 pandas>=2.1.0
+fpdf2>=2.7.0
