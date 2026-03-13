@@ -13,7 +13,7 @@ class ChartTemplate:
     rectified_size: Tuple[int, int]
     inset_margin: float
     sample_size: int
-    target_space: str
+    reference_space: str
     detection_prompt: str
     grid: Optional[Tuple[int, int]] = None
     anchors: Optional[Dict[str, Dict[str, Any]]] = None
@@ -31,7 +31,7 @@ MACBETH_24 = ChartTemplate(
     rectified_size=(1200, 800),
     inset_margin=0.03,
     sample_size=32,
-    target_space="ACEScg",
+    reference_space="ACEScg",
     detection_prompt="macbeth color calibration chart, 6x4 rectangular color samples surrounded by black borders",
     neutral_indices=list(range(18, 24)),
     orientation_anchor=(18, 5),
@@ -57,7 +57,7 @@ KODAK_GRAY_PLUS = ChartTemplate(
     rectified_size=(1200, 900),
     inset_margin=0.02,
     sample_size=64,
-    target_space="ACEScg",
+    reference_space="ACEScg",
     detection_prompt="Kodak Gray Card Plus, large central gray square...",
     anchors={
         "main_gray":       {"pos": (0.50, 0.50), "label": "18% Gray"},
@@ -89,7 +89,7 @@ GRAYSCALE_11 = ChartTemplate(
     rectified_size=(1100, 200),
     inset_margin=0.05,
     sample_size=32,
-    target_space="ACEScg",
+    reference_space="ACEScg",
     detection_prompt="linear grayscale ramp with 11 steps from black to white",
     neutral_indices=list(range(11)),
     color_targets={i: [v, v, v] for i, v in enumerate([0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0])}
@@ -104,7 +104,7 @@ GRAY_CARD = ChartTemplate(
     rectified_size=(800, 800),
     inset_margin=0.1,
     sample_size=128,
-    target_space="ACEScg",
+    reference_space="ACEScg",
     detection_prompt="solid neutral gray card",
     anchors={"center": {"pos": (0.5, 0.5), "label": "18% Gray"}},
     neutral_indices=["center"],

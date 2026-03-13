@@ -28,10 +28,7 @@ class ColorEngine:
         return [space.getName() for space in self.config.getColorSpaces()]
 
     def get_linear_audit_spaces(self) -> list[str]:
-        """
-        Populates the Audit Space dropdown with only Linear/Scene-Linear spaces.
-        Filters based on OCIO 'family' or bit-depth characteristics.
-        """
+        """Returns only Linear spaces. Used primarily for background validation."""
         if not self.config:
             return []
         
@@ -136,18 +133,19 @@ class ColorEngine:
     def get_dual_buffers(self, raw_buffer: np.ndarray, result: 'AuditResult') -> tuple[np.ndarray, np.ndarray]:
         """
         Generates the two required buffers for the sampler:
-        1. Audit Buffer: Linear/ACEScg for math.
-        2. Display Buffer: sRGB for AI detection and UI display.
+        1. Audit Buffer: ACEScg (The Math)
+        2. Display Buffer: Rec.709/sRGB (The Visuals for UI/PDF)
         """
-        # Logic Gate: Use the override if it exists, otherwise the global default
-        input_space = result.input_space_override or settings.default_input_space
+        # Prioritize Task/Result level overrides, then fall back to Global Settings
+        input_space = result.input_space or settings.default_input_space
+        audit_space = result.audit_space or settings.default_audit_space
+        display_space = result.display_space or settings.default_display_space
         
         # 1. Create the Audit Buffer (Linear)
-        audit_space = settings.default_input_space # Usually ACEScg
         audit_buf = self.transform_buffer(raw_buffer, input_space, audit_space)
         
-        # 2. Create the Display Buffer (sRGB)
-        display_space = settings.default_display_space # Usually sRGB
+        # 2. Create the Target Buffer (The "Goal" colorspace)
+        # This is used for Delta E calculation and the PDF swatches
         display_buf = self.transform_buffer(raw_buffer, input_space, display_space)
         
         return audit_buf, display_buf

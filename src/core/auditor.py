@@ -15,6 +15,7 @@ class Auditor:
         pass
 
     def calculate_delta_e(self, observed_rgb: np.ndarray, target_rgb: np.ndarray) -> float:
+        """Calculates Delta E 2000 in the Audit Space (ACEScg)."""
         if np.all(target_rgb <= 0): return 0.0
         obs_lab = colour.XYZ_to_Lab(colour.RGB_to_XYZ(observed_rgb, 'ACEScg'))
         targ_lab = colour.XYZ_to_Lab(colour.RGB_to_XYZ(target_rgb, 'ACEScg'))
@@ -58,7 +59,7 @@ class Auditor:
 
     def _get_regression_data(self, obs: np.ndarray, targ: np.ndarray, intent: str):
         """Helper to swap X/Y based on user intent."""
-        if intent == "extract_grade":
+        if intent == "match_grade":
             return targ, obs  # Mapping Target -> Observed (How was this grade made?)
         return obs, targ      # Mapping Observed -> Target (How do I fix this?)
 

@@ -56,7 +56,8 @@ class AuditResult:
     # --- Per-Task Overrides ---
     # These default to the Global settings if None
     input_space: Optional[str] = None  # e.g. "ARRI LogC4"
-    display_space: Optional[str] = None # e.g. "Rec.709"
+    audit_space: Optional[str] = None # e.g. "ACEScg"
+    display_space: Optional[str] = None # e.g. "rec709"
     # --------------------------
     ai_reasoning: str = ""
     corners: Optional[np.ndarray] = None 
@@ -65,6 +66,9 @@ class AuditResult:
     delta_e_mean: float = 0.0
     delta_e_max: float = 0.0
     is_pass: bool = False
+
+    camera_make: str = "Unknown"
+    camera_model: str = "Unknown"
 
     # New Fields for Intent and Integrity
     analysis_intent: str = "neutralize" # Snapshot of setting used

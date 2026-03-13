@@ -23,9 +23,10 @@ class Settings:
     default_ocio_path: Path = field(init=False)
     current_ocio_path: Path = field(init=False)
     
-    # Default Input/Output Colorspaces (The 'Global' default)
+    # Default Input/Output/Display Colorspaces (The 'Global' default)
     default_input_space: str = "ACES - ACEScg"
-    default_display_space: str = "sRGB - Texture"
+    default_audit_space: str = "ACES - ACEScg" # For color audit
+    default_display_space: str = "sRGB - Texture" #For UI/pdf
     
     # Audit Thresholds
     tolerance_threshold: float = 2.0

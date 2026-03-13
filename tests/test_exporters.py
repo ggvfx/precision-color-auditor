@@ -11,8 +11,10 @@ import os
 import xml.etree.ElementTree as ET
 from src.exporters.cdl_writer import CDLWriter
 from src.exporters.lut_writer import LUTWriter
-from core.models import AuditResult
+from src.exporters.report_generator import ReportGenerator
+from core.models import AuditResult, ColorPatch
 import numpy as np
+from datetime import datetime
 
 def test_cdl_export():
     # Mock a result
@@ -95,6 +97,80 @@ def test_lut_export():
     assert red_input_result == "0.000000 1.000000 0.000000"
     print("SUCCESS: LUT Exported and verified Matrix swap.")
 
+def test_csv_export():
+    res = AuditResult(
+        file_path="D:/VFX/Shot_01.exr",
+        camera_make="ARRI",        # Added
+        camera_model="ALEXA 35",   # Added
+        template_name="macbeth_24",
+        alignment_integrity=0.985,
+        slope=np.array([1.0, 1.0, 1.0]),
+        offset=np.array([0.0, 0.0, 0.0]),
+        power=np.array([1.0, 1.0, 1.0]),
+        matrix_3x3=np.identity(3),
+        delta_e_mean=0.00004,
+        analysis_intent="match_grade",
+        input_space="ARRI LogC4",  # Specific example
+        target_space="Rec.709",    # Using renamed field
+        corners=np.array([[10,10], [100,10], [100,80], [10,80]]),
+        timestamp=datetime.now().isoformat()
+    )
+    
+    out_path = "tests/output/test_log.csv"
+    ReportGenerator.write_csv(res, out_path)
+    
+    assert os.path.exists(out_path)
+    
+    with open(out_path, 'r') as f:
+        lines = f.readlines()
+        
+    # Check header and one data row
+    assert len(lines) == 2 
+    assert "integrity_score" in lines[0]
+    assert "0.9850" in lines[1]
+    
+    print(f"SUCCESS: CSV Exported to {out_path}")
+
+def test_pdf_export():
+    # 1. We MUST create dummy patches or the PDF grid will be empty
+    dummy_patches = [
+        ColorPatch(
+            index=i,
+            name=f"Patch_{i}",
+            observed_rgb=np.array([0.1, 0.2, 0.3]), # Mock color from plate
+            target_rgb=np.array([0.15, 0.25, 0.35]), # Mock color from chart
+            local_center=(0, 0)
+        ) for i in range(24)
+    ]
+
+    # 2. Setup the result object
+    res = AuditResult(
+        file_path="D:/VFX/Shot_01.exr",
+        camera_make="ARRI",
+        camera_model="ALEXA 35",
+        template_name="macbeth_24",
+        alignment_integrity=0.992,
+        slope=np.array([1.05, 1.0, 0.95]),
+        offset=np.array([0.0, 0.0, 0.0]),
+        power=np.array([1.0, 1.0, 1.0]),
+        matrix_3x3=np.identity(3),
+        analysis_intent="match_grade",
+        input_space="ARRI LogC4",
+        target_space="Rec.709",
+        timestamp=datetime.now().isoformat(),
+        patches=dummy_patches
+    )
+    
+    out_path = "tests/output/test_report.pdf"
+    
+    # 3. Trigger the PDF writer
+    ReportGenerator.write_pdf(res, out_path)
+    
+    assert os.path.exists(out_path)
+    print(f"SUCCESS: PDF Report generated at {out_path}")
+
 if __name__ == "__main__":
     test_cdl_export()
     test_lut_export()
+    test_csv_export()
+    test_pdf_export()
