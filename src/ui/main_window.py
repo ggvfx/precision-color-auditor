@@ -31,7 +31,7 @@ except ImportError as e:
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.engine = ColorEngine()
+        self.color_engine = ColorEngine()
         self.setWindowTitle("Precision Color Auditor - Setup")
         self.setMinimumSize(1300, 850)
         
@@ -50,7 +50,60 @@ class MainWindow(QMainWindow):
         sidebar.setStyleSheet("QFrame#Sidebar { background-color: #2b2b2b; border-right: 1px solid #444; }")
         layout = QVBoxLayout(sidebar)
 
-        # 1. INGEST CONTROLS (At the top)
+        # 1. OCIO COLOR PIPELINE (Now First)
+        pipeline_group = QGroupBox("OCIO COLOR PIPELINE")
+        pipe_layout = QVBoxLayout(pipeline_group)
+        
+        self.ocio_path_label = QLabel(str(settings.current_ocio_path.name))
+        self.ocio_path_label.setStyleSheet("font-size: 10px; color: #888; margin-bottom: 2px;")
+        pipe_layout.addWidget(self.ocio_path_label)
+        
+        self.ocio_btn = QPushButton("Change OCIO Config...")
+        self.ocio_btn.clicked.connect(self._browse_ocio)
+        pipe_layout.addWidget(self.ocio_btn)
+
+        # Default Input Space Label + Buttons
+        def_input_layout = QHBoxLayout()
+        def_input_layout.addWidget(QLabel("Default Input Space:"))
+        def_input_layout.addStretch()
+        
+        self.apply_all_btn = QToolButton()
+        self.apply_all_btn.setIcon(qta.icon('fa5s.arrow-circle-down', color='#888'))
+        self.apply_all_btn.setToolTip("Apply this space to ALL files in list")
+        self.apply_all_btn.clicked.connect(self._apply_default_to_all)
+        
+        self.reset_meta_btn = QToolButton()
+        self.reset_meta_btn.setIcon(qta.icon('fa5s.sync-alt', color='#888'))
+        self.reset_meta_btn.setToolTip("Restore all files to metadata-guessed profiles")
+        self.reset_meta_btn.clicked.connect(self._reset_all_to_metadata)
+        
+        def_input_layout.addWidget(self.apply_all_btn)
+        def_input_layout.addWidget(self.reset_meta_btn)
+        pipe_layout.addLayout(def_input_layout)
+
+        self.src_space_combo = QComboBox()
+        pipe_layout.addWidget(self.src_space_combo)
+
+        pipe_layout.addWidget(QLabel("Audit Space (Locked):"))
+        self.audit_space_display = QComboBox()
+        self.audit_space_display.addItems(["ACEScg"])
+        self.audit_space_display.setEnabled(False) 
+        self.audit_space_display.setStyleSheet("""
+            QComboBox { 
+                background-color: #333; 
+                color: #888; 
+                font-style: italic; 
+                border: 1px solid #444; 
+            }
+        """)
+        pipe_layout.addWidget(self.audit_space_display)
+
+        pipe_layout.addWidget(QLabel("Display Space (UI):"))
+        self.display_space_combo = QComboBox()
+        pipe_layout.addWidget(self.display_space_combo)
+        layout.addWidget(pipeline_group)
+
+        # 2. INGEST CONTROLS (Now Second)
         ingest_group = QGroupBox("INGEST CONTROLS")
         ing_layout = QVBoxLayout(ingest_group)
         
@@ -78,7 +131,10 @@ class MainWindow(QMainWindow):
         ing_layout.addWidget(self.clear_table_btn)
         layout.addWidget(ingest_group)
 
-        # 2. ANALYSIS INTENT
+        # Stretch pushes everything above up, and everything below down
+        layout.addStretch()
+
+        # 3. ANALYSIS INTENT & ADVANCED SETTINGS (Now Bottom)
         intent_group = QGroupBox("ANALYSIS INTENT")
         intent_layout = QHBoxLayout(intent_group)
         self.intent_group = QButtonGroup(self)
@@ -94,34 +150,6 @@ class MainWindow(QMainWindow):
         intent_layout.addWidget(self.radio_match)
         layout.addWidget(intent_group)
 
-        # 3. OCIO COLOR PIPELINE (Combined)
-        pipeline_group = QGroupBox("OCIO COLOR PIPELINE")
-        pipe_layout = QVBoxLayout(pipeline_group)
-        
-        self.ocio_path_label = QLabel(str(settings.current_ocio_path.name))
-        self.ocio_path_label.setStyleSheet("font-size: 10px; color: #888; margin-bottom: 2px;")
-        pipe_layout.addWidget(self.ocio_path_label)
-        
-        self.ocio_btn = QPushButton("Change OCIO Config...")
-        self.ocio_btn.clicked.connect(self._browse_ocio)
-        pipe_layout.addWidget(self.ocio_btn)
-
-        pipe_layout.addWidget(QLabel("Input Space (Source):"))
-        self.src_space_combo = QComboBox()
-        pipe_layout.addWidget(self.src_space_combo)
-
-        pipe_layout.addWidget(QLabel("Audit Space (Locked):"))
-        self.audit_space_display = QLabel("ACEScg")
-        self.audit_space_display.setStyleSheet("background-color: #1a1a1a; color: #00ff00; padding: 5px; border: 1px solid #444; font-family: monospace;")
-        pipe_layout.addWidget(self.audit_space_display)
-
-        pipe_layout.addWidget(QLabel("Display Space (UI):"))
-        self.display_space_combo = QComboBox()
-        pipe_layout.addWidget(self.display_space_combo)
-        layout.addWidget(pipeline_group)
-        
-        self._populate_spaces() # Defaults applied here
-
         self.adv_header = QPushButton(" Advanced Settings")
         self.adv_header.setIcon(qta.icon('fa5s.caret-right', color='#888'))
         self.adv_header.setCheckable(True)
@@ -132,7 +160,6 @@ class MainWindow(QMainWindow):
         self.adv_container.setVisible(False)
         adv_layout = QVBoxLayout(self.adv_container)
         
-        # Move existing DeltaE and Output logic into this layout
         tol_layout = QHBoxLayout()
         tol_layout.addWidget(QLabel("DeltaE Tol:"))
         self.tol_spin = QDoubleSpinBox()
@@ -143,7 +170,6 @@ class MainWindow(QMainWindow):
         self.out_btn = QPushButton(f"Out: {settings.output_dir.name}...")
         self.out_btn.clicked.connect(self._browse_output)
         adv_layout.addWidget(self.out_btn)
-        
         layout.addWidget(self.adv_container)
 
         # Toggle Connection
@@ -151,38 +177,33 @@ class MainWindow(QMainWindow):
             self.adv_container.setVisible(checked)
             icon_name = 'fa5s.caret-down' if checked else 'fa5s.caret-right'
             self.adv_header.setIcon(qta.icon(icon_name, color='#888'))
-        
         self.adv_header.toggled.connect(toggle_adv)
 
-        layout.addStretch()
-        
+        # 4. PROCEED BUTTON
         self.process_btn = QPushButton("PROCEED TO AUDIT")
         self.process_btn.setMinimumHeight(60)
         self.process_btn.setStyleSheet("background-color: #2d5a27; font-weight: bold;")
-        self.process_btn.setEnabled(False) 
+        self.process_btn.setEnabled(True) 
         layout.addWidget(self.process_btn)
+        self.process_btn.clicked.connect(self._test_backend_rewiring)
 
+        # FINAL STEP: Add the sidebar to the main layout
         self.layout.addWidget(sidebar)
+        self._populate_spaces()
 
     def _populate_spaces(self):
-        src_list, audit_list = self.engine.get_ui_lists()
-        
-        # Block signals to prevent triggering change events while populating
+        src_list, _ = self.color_engine.get_ui_lists()
         self.src_space_combo.blockSignals(True)
         self.src_space_combo.clear()
         self.src_space_combo.addItems(src_list)
-        
-        #self.audit_space_combo.clear()
-        #self.audit_space_combo.addItems(audit_list)
+
+        # Force ACEScg as default if available, otherwise use config
+        default = "ACEScg" if "ACEScg" in src_list else settings.default_input_space
+        self.src_space_combo.setCurrentText(default)
         
         self.display_space_combo.clear()
         self.display_space_combo.addItems(src_list)
-
-        # APPLY CONFIG DEFAULTS
-        self.src_space_combo.setCurrentText(settings.default_input_space)
-        #self.audit_space_combo.setCurrentText(settings.default_audit_space)
         self.display_space_combo.setCurrentText(settings.default_display_space)
-        
         self.src_space_combo.blockSignals(False)
 
     def _setup_queue_area(self):
@@ -240,40 +261,18 @@ class MainWindow(QMainWindow):
             self.table.setItem(row, 3, QTableWidgetItem(f"{meta['width']}x{meta['height']}"))
             self.table.setItem(row, 5, QTableWidgetItem("Ready"))
 
-            # 3. Signal Profile Dropdown with Strict Waterfall
+            # 3. Signal Profile Dropdown (Surgical Update)
             profile_combo = QComboBox()
-            src_list, _ = self.engine.get_ui_lists()
-            profile_combo.addItems(src_list)
+            profile_combo.addItems(self.color_engine.get_ui_lists()[0])
             
-            raw_hint = meta.get('colorspace_hint', "").strip().lower()
-            best_match = None
-
-            # Determine our primary search target based on metadata hint
-            target = None
-            if "srgb" in raw_hint:
-                target = "sRGB - Texture"
-            elif "linear" in raw_hint or "acescg" in raw_hint:
-                target = "ACEScg"
-
-            if target:
-                target_l = target.lower()
-                # 1. Exact Match
-                exact = next((s for s in src_list if s.lower() == target_l), None)
-                # 2. Starts With
-                starts = next((s for s in src_list if s.lower().startswith(target_l)), None)
-                # 3. Contains
-                contains = next((s for s in src_list if target_l in s.lower()), None)
-
-                best_match = exact or starts or contains
-
-            if best_match:
-                profile_combo.setCurrentText(best_match)
-            else:
-                # Fallback if target logic fails or no matches found
-                profile_combo.insertItem(0, "Unknown")
-                profile_combo.setCurrentIndex(0)
-                profile_combo.setStyleSheet("QComboBox { color: #ff6666; border: 1px solid #ff6666; }")
+            best_match, is_fallback = self._get_best_color_match(path)
+            profile_combo.setCurrentText(best_match)
             
+            if is_fallback:
+                profile_combo.setStyleSheet("QComboBox { color: #aaa; font-style: italic; }")
+            
+            # Critical for the Reset button: store the path
+            profile_combo.setProperty("file_path", path)
             self.table.setCellWidget(row, 4, profile_combo)
 
             # 4. Corrected Delete Button
@@ -290,6 +289,64 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"Ingest Error: {e}")
 
+    def _get_best_color_match(self, path):
+        """Standardized Waterfall Logic: Exact -> StartsWith -> Contains -> Sidebar Default."""
+        _, meta = ImageIngestor.load_image(path)
+        src_list, _ = self.color_engine.get_ui_lists()
+        raw_hint = meta.get('colorspace_hint', "").strip().lower()
+        
+        target = None
+        if "srgb" in raw_hint:
+            target = "sRGB - Texture"
+        elif "linear" in raw_hint or "acescg" in raw_hint:
+            target = "ACEScg"
+
+        if target:
+            target_l = target.lower()
+            # Waterfall: Exact -> Starts -> Contains
+            match = next((s for s in src_list if s.lower() == target_l),
+                    next((s for s in src_list if s.lower().startswith(target_l)),
+                    next((s for s in src_list if target_l in s.lower()), None)))
+            if match:
+                return match, False # False = Not a fallback
+
+        # Final Fallback to Sidebar
+        return self.src_space_combo.currentText(), True
+
+    def _apply_default_to_all(self):
+        """Force every row to match the sidebar's current selection."""
+        target_space = self.src_space_combo.currentText()
+        for row in range(self.table.rowCount()):
+            combo = self.table.cellWidget(row, 4)
+            if isinstance(combo, QComboBox):
+                combo.setCurrentText(target_space)
+                combo.setStyleSheet("")
+
+    def _reset_all_to_metadata(self):
+        """Restore all rows with visual feedback."""
+        from PySide6.QtGui import QCursor
+        
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        self.table.setUpdatesEnabled(False) # Prevent flickering
+        
+        try:
+            for row in range(self.table.rowCount()):
+                combo = self.table.cellWidget(row, 4)
+                path = combo.property("file_path")
+                if path:
+                    best_match, is_fallback = self._get_best_color_match(path)
+                    combo.setCurrentText(best_match)
+                    
+                    # Visual feedback: Just update the text and handle the fallback styling
+                    if is_fallback:
+                        combo.setStyleSheet("color: #aaa; font-style: italic;")
+                    else:
+                        # Clear any existing fallback styling so it looks like a standard entry
+                        combo.setStyleSheet("")
+        finally:
+            self.table.setUpdatesEnabled(True)
+            QApplication.restoreOverrideCursor()
+
     def _remove_row_logic(self, btn):
         # Reliable way to find the row even after sorting or multiple deletions
         index = self.table.indexAt(btn.pos())
@@ -301,7 +358,7 @@ class MainWindow(QMainWindow):
     def _browse_ocio(self):
         path, _ = QFileDialog.getOpenFileName(self, "Select OCIO Config", "", "OCIO Config (*.ocio)")
         if path:
-            self.engine.initialize_config(path)
+            self.color_engine.initialize_config(path)
             settings.update_ocio_config(path)
             self.ocio_path_label.setText(Path(path).name)
             self._populate_spaces()
@@ -316,6 +373,67 @@ class MainWindow(QMainWindow):
         stat = self.statusBar()
         sys_info = get_system_metadata()
         stat.showMessage(f"Host: {sys_info['hostname']} | User: {sys_info['user']} | OS: {sys_info['os']}")
+
+    def _on_proceed_clicked(self):
+        """Harvests per-row signal profiles and hands them to the auditor."""
+        audit_tasks = []
+        
+        for row in range(self.table.rowCount()):
+            # Get the filename/path
+            # (Assuming you stored the full path in the profile combo's property)
+            combo = self.table.cellWidget(row, 4)
+            file_path = combo.property("file_path")
+            selected_profile = combo.currentText()
+            
+            # Create a Task/Result object for the backend
+            # Note: You'll need to import AuditResult from your models
+            task = {
+                "path": file_path,
+                "input_space": selected_profile,
+                "intent": "neutralize" if self.radio_neutral.isChecked() else "match_grade",
+                "audit_space": "ACEScg", # Locked as per UI
+                "display_space": self.display_space_combo.currentText()
+            }
+            audit_tasks.append(task)
+            
+        self._launch_audit_process(audit_tasks)
+
+    def _test_backend_rewiring(self):
+        """Verifies UI-to-Backend data flow."""
+        print("\n" + "="*50)
+        print("      BACKEND REWIRING TEST: EMITTING SIGNALS")
+        print("="*50)
+        
+        # Ensure color_engine exists (fallback check)
+        if not hasattr(self, 'color_engine'):
+            from core.color_engine import ColorEngine
+            self.color_engine = ColorEngine()
+
+        for row in range(self.table.rowCount()):
+            # Try to find the filename in any of the first 3 columns
+            name = "Unknown"
+            for col in range(3):
+                item = self.table.item(row, col)
+                if item and item.text():
+                    name = item.text()
+                    break
+            
+            # Get the Signal Profile ComboBox (Column 4)
+            combo = self.table.cellWidget(row, 4)
+            
+            if combo:
+                selected_profile = combo.currentText()
+                print(f"[ROW {row}] FILE: {name}")
+                print(f"       >> PROPOSED INPUT SPACE: {selected_profile}")
+                
+                # Verify against OCIO
+                available = self.color_engine.get_input_spaces()
+                if selected_profile in available:
+                    print(f"       >> STATUS: Validated in OCIO Config.")
+                else:
+                    print(f"       >> STATUS: !! ERROR !! Space not found.")
+            
+        print("="*50)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
