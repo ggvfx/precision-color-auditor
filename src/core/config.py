@@ -75,12 +75,12 @@ class Settings:
             raise FileNotFoundError(f"Invalid OCIO config path: {custom_path}")
     
     def get_signature(self, patch_count: int):
-        """Returns the chart metadata based on the number of patches found."""
-        signatures = {
-            24: {"label": "Macbeth 24", "rows": 4, "cols": 6},
-            12: {"label": "Grayscale 12", "rows": 1, "cols": 12},
-        }
-        return signatures.get(patch_count)
+        for key, template in CHART_LIBRARY.items():
+            if template.grid:
+                total = template.grid[0] * template.grid[1]
+                if total == patch_count:
+                    return {"label": template.label, "rows": template.grid[1], "cols": template.grid[0]}
+        return None
 
 # Global Singleton Instance
 settings = Settings()
