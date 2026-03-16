@@ -6,8 +6,8 @@ from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                                QGroupBox, QCheckBox, QLabel, QFrame, QHeaderView,
                                QDoubleSpinBox, QComboBox, QRadioButton, QButtonGroup,
                                QFileDialog, QApplication, QStyledItemDelegate, QLineEdit)
-from PySide6.QtCore import Qt, QSize, QPoint, QRectF
-from PySide6.QtGui import QColor, QPainter, QPolygon, QPolygonF, QCursor
+from PySide6.QtCore import Qt, QSize, QPoint, QRectF, QRect
+from PySide6.QtGui import QColor, QPainter, QPolygon, QPolygonF, QCursor, QImage, QPixmap
 import qtawesome as qta
 
 # --- PATH RESOLUTION ---
@@ -17,20 +17,37 @@ project_root = src_dir.parent
 if str(project_root) not in sys.path: sys.path.insert(0, str(project_root))
 if str(src_dir) not in sys.path: sys.path.insert(0, str(src_dir))
 
+class SampledChartDelegate(QStyledItemDelegate):
+    """Renders the rectified image with sample dots in the table cell."""
+    def sizeHint(self, option, index):
+        h = option.rect.height() if option.rect.height() > 0 else 120
+        return QSize(int(h * 1.5), h)
+
+    def paint(self, painter, option, index):
+        if index.column() == 0:
+            result = index.data(Qt.UserRole)
+            if result and hasattr(result, 'rectified_buffer') and result.rectified_buffer is not None:
+                # Convert numpy uint8 buffer to QImage
+                arr = result.rectified_buffer
+                h, w, ch = arr.shape
+                qimg = QImage(arr.data, w, h, ch * w, QImage.Format_RGB888)
+                pixmap = QPixmap.fromImage(qimg)
+                
+                rect = option.rect.adjusted(4, 4, -4, -4)
+                painter.drawPixmap(rect, pixmap.scaled(rect.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            else:
+                painter.setPen(QColor("#666666"))
+                painter.drawText(option.rect, Qt.AlignCenter, "No Image")
+        else:
+            super().paint(painter, option, index)
+
 class TrianglePatchDelegate(QStyledItemDelegate):
     def sizeHint(self, option, index):
         if index.column() == 8:
-            # Get the current row height
             h = option.rect.height() if option.rect.height() > 0 else 120
-            
-            # Macbeth is 6 cols, 4 rows. 
-            # To keep patches square: 
-            # patch_height = (h - vertical_padding) / 4
-            # total_width = (patch_height * 6) + horizontal_padding
             padding = 3
             patch_h = (h - (padding * 5)) / 4
             total_w = (patch_h * 6) + (padding * 7)
-            
             return QSize(total_w, h)
         return super().sizeHint(option, index)
 
@@ -40,13 +57,11 @@ class TrianglePatchDelegate(QStyledItemDelegate):
             painter.save()
             painter.setRenderHint(QPainter.Antialiasing)
             
+            # Use template-based grid if available, else fallback to 6x4
             cols, rows = 6, 4
             padding = 3
             
-            # Calculate patch size based on the height of the cell provided by the table
             patch_size = (rect.height() - (padding * (rows + 1))) / rows
-            
-            # Center the grid horizontally in case the column is wider than required
             grid_w = (patch_size * cols) + (padding * (cols - 1))
             offset_x = rect.x() + (rect.width() - grid_w) / 2
             offset_y = rect.y() + padding
@@ -57,13 +72,11 @@ class TrianglePatchDelegate(QStyledItemDelegate):
                     y = offset_y + (r * (patch_size + padding))
                     patch_rect = QRectF(x, y, patch_size, patch_size)
 
-                    # Top-Left: Target
                     painter.setPen(Qt.NoPen)
                     painter.setBrush(QColor(120 + (r*20), 100 + (c*10), 150)) 
                     t1 = QPolygonF([patch_rect.topLeft(), patch_rect.topRight(), patch_rect.bottomLeft()])
                     painter.drawPolygon(t1)
 
-                    # Bottom-Right: Observed
                     painter.setBrush(QColor(100 + (r*20), 80 + (c*10), 130))
                     t2 = QPolygonF([patch_rect.bottomRight(), patch_rect.topRight(), patch_rect.bottomLeft()])
                     painter.drawPolygon(t2)
@@ -71,6 +84,75 @@ class TrianglePatchDelegate(QStyledItemDelegate):
             painter.restore()
         else:
             super().paint(painter, option, index)
+
+class ChartMagnifier(QWidget):
+    """Large popup for the sampled/rectified image."""
+    def __init__(self, parent=None):
+        super().__init__(parent, Qt.ToolTip | Qt.FramelessWindowHint)
+        self.setFixedSize(550, 400)
+        self.setStyleSheet("background: #1a1a1a; border: 2px solid #FFD700;")
+        self.result = None
+
+    def paintEvent(self, event):
+        if not self.result or self.result.rectified_buffer is None: return
+        painter = QPainter(self)
+        
+        arr = self.result.rectified_buffer
+        h, w, ch = arr.shape
+        qimg = QImage(arr.data, w, h, ch * w, QImage.Format_RGB888)
+        pixmap = QPixmap.fromImage(qimg)
+        
+        img_rect = self.rect().adjusted(10, 10, -10, -40)
+        painter.drawPixmap(img_rect, pixmap.scaled(img_rect.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        
+        painter.setPen(QColor("#FFD700"))
+        painter.drawText(self.rect().adjusted(0, 0, 0, -10), Qt.AlignHCenter | Qt.AlignBottom, 
+                         "Sampled Chart (AI Rectified View)")
+
+class GridMagnifier(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent, Qt.ToolTip | Qt.FramelessWindowHint)
+        self.setFixedSize(450, 320) 
+        self.setStyleSheet("background: #1a1a1a; border: 2px solid #555;")
+        self.result = None
+
+    def paintEvent(self, event):
+        if not self.result: return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        grid_area = self.rect().adjusted(10, 10, -10, -40)
+        cols, rows = 6, 4
+        padding = 5
+        
+        patch_size = min((grid_area.width() - (padding*7))/6, (grid_area.height() - (padding*5))/4)
+        offset_x = (self.width() - ((patch_size * cols) + (padding * (cols - 1)))) / 2
+
+        for r in range(rows):
+            for c in range(cols):
+                x = offset_x + (c * (patch_size + padding))
+                y = grid_area.y() + (r * (patch_size + padding))
+                patch_rect = QRectF(x, y, patch_size, patch_size)
+                
+                painter.setPen(Qt.NoPen)
+                painter.setBrush(QColor(120 + (r*20), 100 + (c*10), 150))
+                t1 = QPolygonF([patch_rect.topLeft(), patch_rect.topRight(), patch_rect.bottomLeft()])
+                painter.drawPolygon(t1)
+                
+                painter.setBrush(QColor(100 + (r*20), 80 + (c*10), 130))
+                t2 = QPolygonF([patch_rect.bottomRight(), patch_rect.topRight(), patch_rect.bottomLeft()])
+                painter.drawPolygon(t2)
+
+        legend_rect = QRectF(0, self.height() - 40, self.width(), 30)
+        painter.setPen(QColor("#CCCCCC"))
+        font = painter.font()
+        font.setPointSize(9)
+        font.setBold(True)
+        painter.setFont(font)
+
+        intent = getattr(self.result, 'analysis_intent', "MATCH GRADE").upper()
+        legend_text = "Left: Corrected  |  Right: Reference"
+        painter.drawText(legend_rect, Qt.AlignCenter, legend_text)
 
 class GridMagnifier(QWidget):
     def __init__(self, parent=None):
@@ -136,7 +218,6 @@ class ReviewWindow(QMainWindow):
         self.setWindowTitle("Audit Review & Export")
         self.setMinimumSize(1400, 900)
 
-        # Main Layout (Table Left, Sidebar Right)
         self.main_widget = QWidget()
         self.setCentralWidget(self.main_widget)
         self.layout = QHBoxLayout(self.main_widget)
@@ -144,28 +225,28 @@ class ReviewWindow(QMainWindow):
         self._setup_table()
         self._setup_review_sidebar()
 
-        # Mouse tracking for magnification on hover
         self.table.setMouseTracking(True)
         self.magnifier = GridMagnifier()
-        # Connect the cellEntered signal
+        self.chart_magnifier = ChartMagnifier() # Initialize image magnifier
+        
         self.table.cellEntered.connect(self._handle_hover)
-
         self.refresh_table()
 
     def _setup_table(self):
         self.table = QTableWidget(0, 12)
         headers = [
-            "Rectified", "Filename", "Camera Info", "Format", 
+            "Sampled Chart", "Filename", "Camera Info", "Format", 
             "Resolution", "Input Space", "Audit Space", "Intent", 
             "Visual Check", "Integrity", "Status", "ASC-CDL (SOP)"
         ]
         self.table.setHorizontalHeaderLabels(headers)
+        
+        # Apply both delegates
+        self.table.setItemDelegateForColumn(0, SampledChartDelegate(self.table))
         self.table.setItemDelegateForColumn(8, TrianglePatchDelegate(self.table))
         
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeToContents)
-        
-        # Apply the delegate and set a taller row for the grid
         self.table.verticalHeader().setDefaultSectionSize(120)
         self.layout.addWidget(self.table, stretch=1)
 
@@ -175,64 +256,63 @@ class ReviewWindow(QMainWindow):
             row = self.table.rowCount()
             self.table.insertRow(row)
 
-            # Metadata (0-4)
+            # Store result in Col 0 for the delegate
+            rect_item = QTableWidgetItem()
+            rect_item.setData(Qt.UserRole, result)
+            self.table.setItem(row, 0, rect_item)
+
             self.table.setItem(row, 1, QTableWidgetItem(result.file_path.split("/")[-1]))
+            # ... (Rest of your refresh logic remains the same) ...
             self.table.setItem(row, 2, QTableWidgetItem(f"{result.camera_make} {result.camera_model}"))
             self.table.setItem(row, 3, QTableWidgetItem(result.file_path.split(".")[-1].upper()))
             self.table.setItem(row, 4, QTableWidgetItem(f"{getattr(result, 'width', 0)} x {getattr(result, 'height', 0)}"))
-
-            # Spaces (5-7)
             self.table.setItem(row, 5, QTableWidgetItem(result.input_space or "Default"))
             self.table.setItem(row, 6, QTableWidgetItem(result.audit_space or "Default"))
             self.table.setItem(row, 7, QTableWidgetItem(result.analysis_intent.upper()))
-
-            # Quality & Status (9-10) - FIXED INDEXING
             self.table.setItem(row, 9, QTableWidgetItem(f"{result.alignment_integrity:.4f}"))
 
-            # magnification Lookup
             filename_item = QTableWidgetItem(result.file_path.split("/")[-1])
-            filename_item.setData(Qt.UserRole, result.file_path) # Store the full path for lookup
+            filename_item.setData(Qt.UserRole, result.file_path) 
             self.table.setItem(row, 1, filename_item)
             
             status_item = QTableWidgetItem()
             self._update_status_cell(status_item, result)
             self.table.setItem(row, 10, status_item) 
 
-            # CDL (11)
             cdl_text = (f"SLOPE: {result.slope[0]:.4f} {result.slope[1]:.4f} {result.slope[2]:.4f}\n"
                         f"OFFSET: {result.offset[0]:.4f} {result.offset[1]:.4f} {result.offset[2]:.4f}\n"
                         f"SAT: {result.sat:.4f}")
             self.table.setItem(row, 11, QTableWidgetItem(cdl_text))
 
-        # After data is in, force a small extra buffer to widths to prevent cramping
         for i in range(self.table.columnCount()):
             self.table.setColumnWidth(i, self.table.columnWidth(i) + 30)
-
-        # Force the header to recalculate based on the delegate sizeHints
         self.table.horizontalHeader().resizeSections(QHeaderView.ResizeToContents)
 
     def _handle_hover(self, row, column):
-        if column == 8:
-            # Get the path we stored in UserRole
-            item = self.table.item(row, 1)
-            if not item: return
-            
-            file_path = item.data(Qt.UserRole)
-            result = self.session.results.get(file_path)
-            
-            # Position the magnifier next to the cursor
-            pos = QCursor.pos()
-            self.magnifier.move(pos.x() + 20, pos.y() - 150)
+        item = self.table.item(row, 1)
+        if not item: return
+        file_path = item.data(Qt.UserRole)
+        result = self.session.results.get(file_path)
+        if not result: return
+
+        pos = QCursor.pos()
+        self.magnifier.hide()
+        self.chart_magnifier.hide()
+
+        if column == 0: # Sampled Chart Hover
+            self.chart_magnifier.result = result
+            self.chart_magnifier.move(pos.x() + 20, pos.y() - 200)
+            self.chart_magnifier.show()
+            self.chart_magnifier.update()
+        elif column == 8: # Visual Check Hover
             self.magnifier.result = result
+            self.magnifier.move(pos.x() + 20, pos.y() - 150)
             self.magnifier.show()
             self.magnifier.update()
-        else:
-            if hasattr(self, 'magnifier'):
-                self.magnifier.hide()
 
-    # Also hide it when the mouse leaves the table entirely
     def leaveEvent(self, event):
         self.magnifier.hide()
+        self.chart_magnifier.hide()
         super().leaveEvent(event)
 
     def _setup_review_sidebar(self):
@@ -354,6 +434,8 @@ class ReviewWindow(QMainWindow):
     
 if __name__ == "__main__":
     from core.models import AuditResult, AuditStatus
+    import cv2
+    import numpy as np
     
     class MockSession:
         def __init__(self):
@@ -367,11 +449,18 @@ if __name__ == "__main__":
             res.is_pass = True
             res.alignment_integrity = 0.9920
             res.status = AuditStatus.COMPLETE
+            res.slope = [1.05, 1.0, 0.95]; res.offset = [0,0,0]; res.sat = 1.0
             
-            # Using actual values from your report 
-            res.slope = [1.0500, 1.0000, 0.9500] 
-            res.offset = [0.0000, 0.0000, 0.0000]
-            res.sat = 1.0000
+            # MOCK RECTIFIED IMAGE (Placeholder for testing)
+            # In real use, sampler.py provides this
+            mock_img = np.zeros((800, 1200, 3), dtype=np.uint8)
+            cv2.putText(mock_img, "TEST RECTIFIED IMAGE", (300, 400), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 3)
+            # Draw some mock sample dots
+            for y in range(100, 800, 200):
+                for x in range(100, 1200, 200):
+                    cv2.circle(mock_img, (x, y), 10, (0, 255, 0), -1)
+            res.rectified_buffer = mock_img
             
             self.results = {res.file_path: res}
 
