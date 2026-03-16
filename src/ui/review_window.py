@@ -17,6 +17,9 @@ project_root = src_dir.parent
 if str(project_root) not in sys.path: sys.path.insert(0, str(project_root))
 if str(src_dir) not in sys.path: sys.path.insert(0, str(src_dir))
 
+from ui.widgets import create_ocio_combo
+from core.color_engine import ColorEngine
+
 class SampledChartDelegate(QStyledItemDelegate):
     """Renders the rectified image with sample dots in the table cell."""
     def sizeHint(self, option, index):
@@ -112,51 +115,6 @@ class ChartMagnifier(QWidget):
 class GridMagnifier(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent, Qt.ToolTip | Qt.FramelessWindowHint)
-        self.setFixedSize(450, 320) 
-        self.setStyleSheet("background: #1a1a1a; border: 2px solid #555;")
-        self.result = None
-
-    def paintEvent(self, event):
-        if not self.result: return
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-        
-        grid_area = self.rect().adjusted(10, 10, -10, -40)
-        cols, rows = 6, 4
-        padding = 5
-        
-        patch_size = min((grid_area.width() - (padding*7))/6, (grid_area.height() - (padding*5))/4)
-        offset_x = (self.width() - ((patch_size * cols) + (padding * (cols - 1)))) / 2
-
-        for r in range(rows):
-            for c in range(cols):
-                x = offset_x + (c * (patch_size + padding))
-                y = grid_area.y() + (r * (patch_size + padding))
-                patch_rect = QRectF(x, y, patch_size, patch_size)
-                
-                painter.setPen(Qt.NoPen)
-                painter.setBrush(QColor(120 + (r*20), 100 + (c*10), 150))
-                t1 = QPolygonF([patch_rect.topLeft(), patch_rect.topRight(), patch_rect.bottomLeft()])
-                painter.drawPolygon(t1)
-                
-                painter.setBrush(QColor(100 + (r*20), 80 + (c*10), 130))
-                t2 = QPolygonF([patch_rect.bottomRight(), patch_rect.topRight(), patch_rect.bottomLeft()])
-                painter.drawPolygon(t2)
-
-        legend_rect = QRectF(0, self.height() - 40, self.width(), 30)
-        painter.setPen(QColor("#CCCCCC"))
-        font = painter.font()
-        font.setPointSize(9)
-        font.setBold(True)
-        painter.setFont(font)
-
-        intent = getattr(self.result, 'analysis_intent', "MATCH GRADE").upper()
-        legend_text = "Left: Corrected  |  Right: Reference"
-        painter.drawText(legend_rect, Qt.AlignCenter, legend_text)
-
-class GridMagnifier(QWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent, Qt.ToolTip | Qt.FramelessWindowHint)
         # 1. Tighter overall window size
         self.setFixedSize(450, 320) 
         self.setStyleSheet("background: #1a1a1a; border: 2px solid #555;")
@@ -215,8 +173,11 @@ class ReviewWindow(QMainWindow):
     def __init__(self, session_manager):
         super().__init__()
         self.session = session_manager
+        self.color_engine = getattr(session_manager, 'color_engine', None) 
+        if not self.color_engine and hasattr(session_manager, 'sampler'):
+            self.color_engine = session_manager.sampler.color_engine
         self.setWindowTitle("Audit Review & Export")
-        self.setMinimumSize(1400, 900)
+        self.setMinimumSize(1700, 900)
 
         self.main_widget = QWidget()
         self.setCentralWidget(self.main_widget)
@@ -262,11 +223,12 @@ class ReviewWindow(QMainWindow):
             self.table.setItem(row, 0, rect_item)
 
             self.table.setItem(row, 1, QTableWidgetItem(result.file_path.split("/")[-1]))
-            # ... (Rest of your refresh logic remains the same) ...
             self.table.setItem(row, 2, QTableWidgetItem(f"{result.camera_make} {result.camera_model}"))
             self.table.setItem(row, 3, QTableWidgetItem(result.file_path.split(".")[-1].upper()))
             self.table.setItem(row, 4, QTableWidgetItem(f"{getattr(result, 'width', 0)} x {getattr(result, 'height', 0)}"))
-            self.table.setItem(row, 5, QTableWidgetItem(result.input_space or "Default"))
+            # --- COLUMN 5: INPUT SPACE DROPDOWN ---
+            combo = self._create_input_space_combo(row, result.input_space or "Default")
+            self.table.setCellWidget(row, 5, combo)
             self.table.setItem(row, 6, QTableWidgetItem(result.audit_space or "Default"))
             self.table.setItem(row, 7, QTableWidgetItem(result.analysis_intent.upper()))
             self.table.setItem(row, 9, QTableWidgetItem(f"{result.alignment_integrity:.4f}"))
@@ -315,6 +277,48 @@ class ReviewWindow(QMainWindow):
         self.chart_magnifier.hide()
         super().leaveEvent(event)
 
+    def _create_input_space_combo(self, row, current_value):
+        # 1. Create the shared factory combo
+        combo = create_ocio_combo(self.color_engine, current_value)
+        
+        # Style the combo slightly so it doesn't look cramped
+        combo.setMinimumWidth(180)
+        combo.setStyleSheet("QComboBox { height: 24px; }")
+        
+        # Connect the "Dirty" logic
+        combo.currentTextChanged.connect(lambda text: self._on_input_space_changed(row, text))
+        
+        # 2. Wrap it in a container to allow centering
+        container = QWidget()
+        layout = QHBoxLayout(container)
+        layout.addWidget(combo)
+        
+        # Remove margins so the layout doesn't add extra space, then center
+        layout.setContentsMargins(10, 0, 10, 0)
+        layout.setAlignment(Qt.AlignCenter)
+        
+        return container
+
+    def _on_input_space_changed(self, row, new_text):
+        # 1. Get the result object
+        item = self.table.item(row, 1) # Filename item
+        file_path = item.data(Qt.UserRole)
+        result = self.session.results.get(file_path)
+        
+        if result:
+            # 2. Update the result metadata
+            result.input_space = new_text
+            
+            # 3. Mark as Dirty
+            from core.models import AuditStatus
+            result.status = AuditStatus.MANUAL_EDIT
+            
+            # 4. Refresh the status cell (Column 10)
+            status_item = self.table.item(row, 10)
+            self._update_status_cell(status_item, result)
+            
+            print(f"[UI] Input space changed for {result.file_path} -> {new_text}. Status: DIRTY")
+
     def _setup_review_sidebar(self):
         sidebar = QFrame()
         sidebar.setFixedWidth(320)
@@ -327,6 +331,7 @@ class ReviewWindow(QMainWindow):
         self.reprocess_btn = QPushButton(" REPROCESS DIRTY FILES")
         self.reprocess_btn.setIcon(qta.icon('fa5s.sync', color='#FFD700'))
         self.reprocess_btn.setStyleSheet("background-color: #444; font-weight: bold; height: 40px;")
+        self.reprocess_btn.clicked.connect(self._reprocess_dirty)
         proc_layout.addWidget(self.reprocess_btn)
         layout.addWidget(proc_group)
 
@@ -431,14 +436,42 @@ class ReviewWindow(QMainWindow):
         folder = QFileDialog.getExistingDirectory(self, "Select Export Directory")
         if folder:
             self.path_edit.setText(folder)
+
+    def _reprocess_dirty(self):
+        dirty_paths = []
+        
+        for row in range(self.table.rowCount()):
+            # Check the status of the result
+            item = self.table.item(row, 1)
+            file_path = item.data(Qt.UserRole)
+            result = self.session.results.get(file_path)
+            
+            from core.models import AuditStatus
+            if result and result.status == AuditStatus.MANUAL_EDIT:
+                dirty_paths.append(file_path)
+        
+        if not dirty_paths:
+            print("[UI] No dirty files to reprocess.")
+            return
+
+        print(f"[UI] Reprocessing {len(dirty_paths)} files with updated settings...")
+        
+        # Disable button during processing
+        self.reprocess_btn.setEnabled(False)
+        self.reprocess_btn.setText(" PROCESSING...")
+        
+        # Start the batch
+        self.session.run_batch(dirty_paths)
     
 if __name__ == "__main__":
     from core.models import AuditResult, AuditStatus
+    from core.color_engine import ColorEngine
     import cv2
     import numpy as np
     
     class MockSession:
         def __init__(self):
+            self.color_engine = ColorEngine()
             res = AuditResult(file_path="D:/VFX/Shot 01.exr")
             res.camera_make = "ARRI"
             res.camera_model = "ALEXA 35"

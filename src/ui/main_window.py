@@ -24,6 +24,7 @@ try:
     from core.templates import CHART_LIBRARY
     from core.config import settings
     from exporters.utils import get_system_metadata 
+    from ui.widgets import create_ocio_combo
 except ImportError as e:
     print(f"Critical Import Error: {e}")
     sys.exit(1)
@@ -261,15 +262,11 @@ class MainWindow(QMainWindow):
             self.table.setItem(row, 3, QTableWidgetItem(f"{meta['width']}x{meta['height']}"))
             self.table.setItem(row, 5, QTableWidgetItem("Ready"))
 
-            # 3. Signal Profile Dropdown (Surgical Update)
-            profile_combo = QComboBox()
-            profile_combo.addItems(self.color_engine.get_ui_lists()[0])
-            
+            # 3. Signal Profile Dropdown
             best_match, is_fallback = self._get_best_color_match(path)
-            profile_combo.setCurrentText(best_match)
-            
-            if is_fallback:
-                profile_combo.setStyleSheet("QComboBox { color: #aaa; font-style: italic; }")
+            profile_combo = create_ocio_combo(self.color_engine, best_match, is_fallback)
+            profile_combo.setProperty("file_path", path)
+            self.table.setCellWidget(row, 4, profile_combo)
             
             # Critical for the Reset button: store the path
             profile_combo.setProperty("file_path", path)
