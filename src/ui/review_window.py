@@ -52,18 +52,17 @@ class ReviewWindow(QMainWindow):
         self.refresh_table()
 
     def _setup_table(self):
-        self.table = QTableWidget(0, 13)
+        self.table = QTableWidget(0, 11)
         headers = [
             "Sampled Chart", "Filename", "Camera Info", "Format", 
-            "Resolution", "Input Space", "Audit Space", "Intent", 
-            "Visual Check", "Integrity", "Status", "ASC-CDL (SOP)",
-            "Actions"
+            "Resolution", "Input Space", "Intent", 
+            "Visual Check", "Integrity", "Status", "Actions"
         ]
         self.table.setHorizontalHeaderLabels(headers)
         
         # Apply both delegates
         self.table.setItemDelegateForColumn(0, SampledChartDelegate(self.table))
-        self.table.setItemDelegateForColumn(8, TrianglePatchDelegate(self.table))
+        self.table.setItemDelegateForColumn(7, TrianglePatchDelegate(self.table))
         
         header = self.table.horizontalHeader()
         self.table.setColumnWidth(12, 50)
@@ -82,31 +81,25 @@ class ReviewWindow(QMainWindow):
             rect_item.setData(Qt.UserRole, result)
             self.table.setItem(row, 0, rect_item)
 
+            filename_item = QTableWidgetItem(result.file_path.split("/")[-1])
+            filename_item.setData(Qt.UserRole, result.file_path) 
+            self.table.setItem(row, 1, filename_item)
+
             self.table.setItem(row, 2, QTableWidgetItem(f"{result.camera_make} {result.camera_model}"))
             self.table.setItem(row, 3, QTableWidgetItem(result.file_path.split(".")[-1].upper()))
             self.table.setItem(row, 4, QTableWidgetItem(f"{getattr(result, 'width', 0)} x {getattr(result, 'height', 0)}"))
             # --- COLUMN 5: INPUT SPACE DROPDOWN ---
             combo = self._create_input_space_combo(row, result.input_space or "Default")
             self.table.setCellWidget(row, 5, combo)
-            self.table.setItem(row, 6, QTableWidgetItem(result.audit_space or "Default"))
-            self.table.setItem(row, 7, QTableWidgetItem(result.analysis_intent.upper()))
-            self.table.setItem(row, 9, QTableWidgetItem(f"{result.alignment_integrity:.4f}"))
+            self.table.setItem(row, 6, QTableWidgetItem(result.analysis_intent.upper()))
+            self.table.setItem(row, 8, QTableWidgetItem(f"{result.alignment_integrity:.4f}"))
 
-            filename_item = QTableWidgetItem(result.file_path.split("/")[-1])
-            filename_item.setData(Qt.UserRole, result.file_path) 
-            self.table.setItem(row, 1, filename_item)
-            
             status_item = QTableWidgetItem()
             self._update_status_cell(status_item, result)
-            self.table.setItem(row, 10, status_item) 
-
-            cdl_text = (f"SLOPE: {result.slope[0]:.4f} {result.slope[1]:.4f} {result.slope[2]:.4f}\n"
-                        f"OFFSET: {result.offset[0]:.4f} {result.offset[1]:.4f} {result.offset[2]:.4f}\n"
-                        f"SAT: {result.sat:.4f}")
-            self.table.setItem(row, 11, QTableWidgetItem(cdl_text))
+            self.table.setItem(row, 9, status_item) 
 
             actions_widget = self._create_action_buttons(row, path)
-            self.table.setCellWidget(row, 12, actions_widget)
+            self.table.setCellWidget(row, 10, actions_widget)
 
         self.table.horizontalHeader().resizeSections(QHeaderView.ResizeToContents)
         # Ensure the Actions column stays at a usable width
@@ -128,7 +121,7 @@ class ReviewWindow(QMainWindow):
             self.chart_magnifier.move(pos.x() + 20, pos.y() - 200)
             self.chart_magnifier.show()
             self.chart_magnifier.update()
-        elif column == 8: # Visual Check Hover
+        elif column == 7: # Visual Check Hover
             self.magnifier.result = result
             self.magnifier.move(pos.x() + 20, pos.y() - 150)
             self.magnifier.show()
@@ -174,8 +167,8 @@ class ReviewWindow(QMainWindow):
             # 3. Mark as Dirty
             result.status = AuditStatus.MANUAL_EDIT
             
-            # 4. Refresh the status cell (Column 10)
-            status_item = self.table.item(row, 10)
+            # 4. Refresh the status cell
+            status_item = self.table.item(row, 9)
             self._update_status_cell(status_item, result)
             
             print(f"[UI] Input space changed for {result.file_path} -> {new_text}. Status: DIRTY")
@@ -256,6 +249,23 @@ class ReviewWindow(QMainWindow):
         sidebar.setFixedWidth(320)
         sidebar.setStyleSheet("background-color: #2b2b2b; border-left: 1px solid #444;")
         layout = QVBoxLayout(sidebar)
+
+        info_group = QGroupBox("INFO")
+        info_layout = QVBoxLayout(info_group)
+        info_layout.addWidget(QLabel("Audit Space (Locked):"))
+        self.audit_space_display = QComboBox()
+        self.audit_space_display.addItems(["ACEScg"])
+        self.audit_space_display.setEnabled(False) 
+        self.audit_space_display.setStyleSheet("""
+            QComboBox { 
+                background-color: #333; 
+                color: #888; 
+                font-style: italic; 
+                border: 1px solid #444; 
+            }
+        """)
+        info_layout.addWidget(self.audit_space_display)
+        layout.addWidget(info_group)
 
         # 1. Processing Actions
         proc_group = QGroupBox("ACTIONS")
@@ -373,12 +383,14 @@ class ReviewWindow(QMainWindow):
         dirty_paths = []
         
         for row in range(self.table.rowCount()):
-            # Check the status of the result
+            # Column 1 still holds our filename/filepath data
             item = self.table.item(row, 1)
+            if not item: continue
+            
             file_path = item.data(Qt.UserRole)
             result = self.session.results.get(file_path)
             
-            from core.models import AuditStatus
+            # Use the enum for the status check
             if result and result.status == AuditStatus.MANUAL_EDIT:
                 dirty_paths.append(file_path)
         
@@ -386,13 +398,12 @@ class ReviewWindow(QMainWindow):
             print("[UI] No dirty files to reprocess.")
             return
 
-        print(f"[UI] Reprocessing {len(dirty_paths)} files with updated settings...")
+        print(f"[UI] Reprocessing {len(dirty_paths)} files...")
         
-        # Disable button during processing
         self.reprocess_btn.setEnabled(False)
         self.reprocess_btn.setText(" PROCESSING...")
         
-        # Start the batch
+        # This triggers the core logic to run the audit again
         self.session.run_batch(dirty_paths)
     
 if __name__ == "__main__":
