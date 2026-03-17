@@ -177,7 +177,7 @@ class ReviewWindow(QMainWindow):
         if not self.color_engine and hasattr(session_manager, 'sampler'):
             self.color_engine = session_manager.sampler.color_engine
         self.setWindowTitle("Audit Review & Export")
-        self.setMinimumSize(1700, 900)
+        self.setMinimumSize(1800, 900)
 
         self.main_widget = QWidget()
         self.setCentralWidget(self.main_widget)
@@ -194,11 +194,12 @@ class ReviewWindow(QMainWindow):
         self.refresh_table()
 
     def _setup_table(self):
-        self.table = QTableWidget(0, 12)
+        self.table = QTableWidget(0, 13)
         headers = [
             "Sampled Chart", "Filename", "Camera Info", "Format", 
             "Resolution", "Input Space", "Audit Space", "Intent", 
-            "Visual Check", "Integrity", "Status", "ASC-CDL (SOP)"
+            "Visual Check", "Integrity", "Status", "ASC-CDL (SOP)",
+            "Actions"
         ]
         self.table.setHorizontalHeaderLabels(headers)
         
@@ -207,6 +208,7 @@ class ReviewWindow(QMainWindow):
         self.table.setItemDelegateForColumn(8, TrianglePatchDelegate(self.table))
         
         header = self.table.horizontalHeader()
+        self.table.setColumnWidth(12, 50)
         header.setSectionResizeMode(QHeaderView.ResizeToContents)
         self.table.verticalHeader().setDefaultSectionSize(120)
         self.layout.addWidget(self.table, stretch=1)
@@ -222,7 +224,6 @@ class ReviewWindow(QMainWindow):
             rect_item.setData(Qt.UserRole, result)
             self.table.setItem(row, 0, rect_item)
 
-            self.table.setItem(row, 1, QTableWidgetItem(result.file_path.split("/")[-1]))
             self.table.setItem(row, 2, QTableWidgetItem(f"{result.camera_make} {result.camera_model}"))
             self.table.setItem(row, 3, QTableWidgetItem(result.file_path.split(".")[-1].upper()))
             self.table.setItem(row, 4, QTableWidgetItem(f"{getattr(result, 'width', 0)} x {getattr(result, 'height', 0)}"))
@@ -246,9 +247,12 @@ class ReviewWindow(QMainWindow):
                         f"SAT: {result.sat:.4f}")
             self.table.setItem(row, 11, QTableWidgetItem(cdl_text))
 
-        for i in range(self.table.columnCount()):
-            self.table.setColumnWidth(i, self.table.columnWidth(i) + 30)
+            actions_widget = self._create_action_buttons(row, path)
+            self.table.setCellWidget(row, 12, actions_widget)
+
         self.table.horizontalHeader().resizeSections(QHeaderView.ResizeToContents)
+        # Ensure the Actions column stays at a usable width
+        self.table.setColumnWidth(12, 60)
 
     def _handle_hover(self, row, column):
         item = self.table.item(row, 1)
@@ -318,6 +322,56 @@ class ReviewWindow(QMainWindow):
             self._update_status_cell(status_item, result)
             
             print(f"[UI] Input space changed for {result.file_path} -> {new_text}. Status: DIRTY")
+
+    def _create_action_buttons(self, row, file_path):
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(2, 4, 2, 4)
+        layout.setSpacing(4)
+
+        # 1. Redraw/Edit Bounding Box Button
+        edit_btn = QPushButton()
+        edit_btn.setIcon(qta.icon('fa5s.vector-square', color='#FFD700'))
+        edit_btn.setToolTip("Manually Redraw Bounding Box")
+        edit_btn.setFixedSize(30, 30) # Slightly smaller to fit better vertically
+        edit_btn.setStyleSheet("QPushButton { background-color: #444; border-radius: 4px; } "
+                               "QPushButton:hover { background-color: #555; }")
+        edit_btn.clicked.connect(lambda: self._on_edit_bb_clicked(file_path))
+
+        # 2. Delete Row Button
+        delete_btn = QPushButton()
+        delete_btn.setIcon(qta.icon('fa5s.trash-alt', color='#ff6666'))
+        delete_btn.setToolTip("Remove from Session")
+        delete_btn.setFixedSize(30, 30)
+        delete_btn.setStyleSheet("QPushButton { background-color: #444; border-radius: 4px; } "
+                                 "QPushButton:hover { background-color: #663333; }")
+        delete_btn.clicked.connect(lambda: self._on_delete_row_clicked(row, file_path))
+
+        layout.addWidget(edit_btn)
+        layout.addWidget(delete_btn)
+        layout.setAlignment(Qt.AlignCenter)
+        
+        return container
+    
+    def _on_delete_row_clicked(self, row, file_path):
+        """Removes the item from the session and the UI table."""
+        # Remove from session data
+        if file_path in self.session.results:
+            del self.session.results[file_path]
+        
+        # Remove from UI
+        self.table.removeRow(row)
+        print(f"[UI] Removed {file_path} from session.")
+        # Note: You may need to refresh_table() if you want row indices to stay perfectly in sync 
+        # with the lambda closures, or use a more robust ID system.
+
+    def _on_edit_bb_clicked(self, file_path):
+        """Prepares for the manual corner adjustment window."""
+        result = self.session.results.get(file_path)
+        if not result: return
+        
+        print(f"[UI] Opening Manual Redraw for: {file_path}")
+        # Next step: Launch the InteractiveCornerWindow(result)
 
     def _setup_review_sidebar(self):
         sidebar = QFrame()
