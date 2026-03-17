@@ -25,20 +25,18 @@ class SampledChartDelegate(QStyledItemDelegate):
         return QSize(int(h * 1.5), h)
 
     def paint(self, painter, option, index):
-        if index.column() == 0:
-            result = index.data(Qt.UserRole)
-            if result and hasattr(result, 'rectified_buffer') and result.rectified_buffer is not None:
-                arr = result.rectified_buffer
-                h, w, ch = arr.shape
-                qimg = QImage(arr.data, w, h, ch * w, QImage.Format_RGB888)
-                pixmap = QPixmap.fromImage(qimg)
-                rect = option.rect.adjusted(4, 4, -4, -4)
-                painter.drawPixmap(rect, pixmap.scaled(rect.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
-            else:
-                painter.setPen(QColor("#666666"))
-                painter.drawText(option.rect, Qt.AlignCenter, "No Image")
+        # Shifted everything left to remove the dependency on the commented-out 'if'
+        result = index.data(Qt.UserRole)
+        if result and hasattr(result, 'rectified_buffer') and result.rectified_buffer is not None:
+            arr = result.rectified_buffer
+            h, w, ch = arr.shape
+            qimg = QImage(arr.data, w, h, ch * w, QImage.Format_RGB888)
+            pixmap = QPixmap.fromImage(qimg)
+            rect = option.rect.adjusted(4, 4, -4, -4)
+            painter.drawPixmap(rect, pixmap.scaled(rect.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
         else:
-            super().paint(painter, option, index)
+            painter.setPen(QColor("#666666"))
+            painter.drawText(option.rect, Qt.AlignCenter, "No Image")
 
 class TrianglePatchDelegate(QStyledItemDelegate):
     def sizeHint(self, option, index):

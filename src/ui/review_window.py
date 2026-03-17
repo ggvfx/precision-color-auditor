@@ -54,18 +54,18 @@ class ReviewWindow(QMainWindow):
     def _setup_table(self):
         self.table = QTableWidget(0, 11)
         headers = [
-            "Sampled Chart", "Filename", "Camera Info", "Format", 
-            "Resolution", "Input Space", "Intent", 
+            "Filename", "Camera Info", "Format", 
+            "Resolution", "Input Space", "Intent", "Sampled Chart", 
             "Visual Check", "Integrity", "Status", "Actions"
         ]
         self.table.setHorizontalHeaderLabels(headers)
         
         # Apply both delegates
-        self.table.setItemDelegateForColumn(0, SampledChartDelegate(self.table))
+        self.table.setItemDelegateForColumn(6, SampledChartDelegate(self.table))
         self.table.setItemDelegateForColumn(7, TrianglePatchDelegate(self.table))
         
         header = self.table.horizontalHeader()
-        self.table.setColumnWidth(12, 50)
+        self.table.setColumnWidth(10, 50)
         header.setSectionResizeMode(QHeaderView.ResizeToContents)
         self.table.verticalHeader().setDefaultSectionSize(120)
         self.layout.addWidget(self.table, stretch=1)
@@ -75,38 +75,45 @@ class ReviewWindow(QMainWindow):
         for path, result in self.session.results.items():
             row = self.table.rowCount()
             self.table.insertRow(row)
-
-            # Store result in Col 0 for the delegate
-            rect_item = QTableWidgetItem()
-            rect_item.setData(Qt.UserRole, result)
-            self.table.setItem(row, 0, rect_item)
-
+ 
+            # Col 0: Filename
             filename_item = QTableWidgetItem(result.file_path.split("/")[-1])
             filename_item.setData(Qt.UserRole, result.file_path) 
-            self.table.setItem(row, 1, filename_item)
-
-            self.table.setItem(row, 2, QTableWidgetItem(f"{result.camera_make} {result.camera_model}"))
-            self.table.setItem(row, 3, QTableWidgetItem(result.file_path.split(".")[-1].upper()))
-            self.table.setItem(row, 4, QTableWidgetItem(f"{getattr(result, 'width', 0)} x {getattr(result, 'height', 0)}"))
-            # --- COLUMN 5: INPUT SPACE DROPDOWN ---
+            self.table.setItem(row, 0, filename_item)
+            # Col 1: Camera Info
+            self.table.setItem(row, 1, QTableWidgetItem(f"{result.camera_make} {result.camera_model}"))
+            # Col 2: Format
+            self.table.setItem(row, 2, QTableWidgetItem(result.file_path.split(".")[-1].upper()))
+            # Col 3: Resolution
+            self.table.setItem(row, 3, QTableWidgetItem(f"{getattr(result, 'width', 0)} x {getattr(result, 'height', 0)}"))
+            # Col 4: Input Space Dropdown
             combo = self._create_input_space_combo(row, result.input_space or "Default")
-            self.table.setCellWidget(row, 5, combo)
-            self.table.setItem(row, 6, QTableWidgetItem(result.analysis_intent.upper()))
+            self.table.setCellWidget(row, 4, combo)
+            # Col 5: Intent
+            self.table.setItem(row, 5, QTableWidgetItem(result.analysis_intent.upper()))
+            # Col 6: Sampled Chart
+            rect_item = QTableWidgetItem()
+            rect_item.setData(Qt.UserRole, result)
+            self.table.setItem(row, 6, rect_item)
+            # Col 7: Visual Check
+            self.table.setItem(row, 7, QTableWidgetItem())
+            # Col 8: Integrity
             self.table.setItem(row, 8, QTableWidgetItem(f"{result.alignment_integrity:.4f}"))
-
+            # Col 9: Status
             status_item = QTableWidgetItem()
             self._update_status_cell(status_item, result)
             self.table.setItem(row, 9, status_item) 
-
+            # Col 10: Actions
             actions_widget = self._create_action_buttons(row, path)
             self.table.setCellWidget(row, 10, actions_widget)
 
         self.table.horizontalHeader().resizeSections(QHeaderView.ResizeToContents)
+        self.table.setColumnWidth(6, 180)
         # Ensure the Actions column stays at a usable width
-        self.table.setColumnWidth(12, 60)
+        self.table.setColumnWidth(10, 60)
 
     def _handle_hover(self, row, column):
-        item = self.table.item(row, 1)
+        item = self.table.item(row, 0)
         if not item: return
         file_path = item.data(Qt.UserRole)
         result = self.session.results.get(file_path)
@@ -116,7 +123,7 @@ class ReviewWindow(QMainWindow):
         self.magnifier.hide()
         self.chart_magnifier.hide()
 
-        if column == 0: # Sampled Chart Hover
+        if column == 6: # Sampled Chart Hover
             self.chart_magnifier.result = result
             self.chart_magnifier.move(pos.x() + 20, pos.y() - 200)
             self.chart_magnifier.show()
@@ -156,7 +163,7 @@ class ReviewWindow(QMainWindow):
 
     def _on_input_space_changed(self, row, new_text):
         # 1. Get the result object
-        item = self.table.item(row, 1) # Filename item
+        item = self.table.item(row, 0) # Filename item
         file_path = item.data(Qt.UserRole)
         result = self.session.results.get(file_path)
         
