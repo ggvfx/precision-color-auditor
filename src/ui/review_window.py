@@ -195,7 +195,16 @@ class ReviewWindow(QMainWindow):
                                "QPushButton:hover { background-color: #555; }")
         edit_btn.clicked.connect(lambda: self._on_edit_bb_clicked(file_path))
 
-        # 2. Delete Row Button
+        # 2. Copy CDL Button
+        copy_btn = QPushButton()
+        copy_btn.setIcon(qta.icon('fa5s.copy', color='#ADD8E6'))
+        edit_btn.setToolTip("Copy ASC-CDL values to clipboard")
+        copy_btn.setFixedSize(30, 30)
+        copy_btn.setStyleSheet("QPushButton { background-color: #444; border-radius: 4px; }"
+                               "QPushButton:hover { background-color: #555; }")
+        copy_btn.clicked.connect(lambda: self._on_copy_cdl_clicked(file_path))
+
+        # 3. Delete Row Button
         delete_btn = QPushButton()
         delete_btn.setIcon(qta.icon('fa5s.trash-alt', color='#ff6666'))
         delete_btn.setToolTip("Remove from Session")
@@ -205,11 +214,31 @@ class ReviewWindow(QMainWindow):
         delete_btn.clicked.connect(lambda: self._on_delete_row_clicked(row, file_path))
 
         layout.addWidget(edit_btn)
+        layout.addWidget(copy_btn)
         layout.addWidget(delete_btn)
         layout.setAlignment(Qt.AlignCenter)
         
         return container
-    
+
+    def _on_edit_bb_clicked(self, file_path):
+        """Prepares for the manual corner adjustment window."""
+        result = self.session.results.get(file_path)
+        if not result: return
+        
+        print(f"[UI] Opening Manual Redraw for: {file_path}")
+        # Next step: Launch the InteractiveCornerWindow(result)
+
+    def _on_copy_cdl_clicked(self, file_path):
+        result = self.session.results.get(file_path)
+        if not result: return
+
+        cdl_str = (f"Slope: {result.slope[0]:.4f} {result.slope[1]:.4f} {result.slope[2]:.4f} | "
+                   f"Offset: {result.offset[0]:.4f} {result.offset[1]:.4f} {result.offset[2]:.4f} | "
+                   f"Power: 1.0000 1.0000 1.0000 | "
+                   f"Sat: {result.sat:.4f}")
+
+        QApplication.clipboard().setText(cdl_str)
+
     def _on_delete_row_clicked(self, row, file_path):
         """Removes the item from the session and the UI table."""
         # Remove from session data
@@ -221,14 +250,6 @@ class ReviewWindow(QMainWindow):
         print(f"[UI] Removed {file_path} from session.")
         # Note: You may need to refresh_table() if you want row indices to stay perfectly in sync 
         # with the lambda closures, or use a more robust ID system.
-
-    def _on_edit_bb_clicked(self, file_path):
-        """Prepares for the manual corner adjustment window."""
-        result = self.session.results.get(file_path)
-        if not result: return
-        
-        print(f"[UI] Opening Manual Redraw for: {file_path}")
-        # Next step: Launch the InteractiveCornerWindow(result)
 
     def _setup_review_sidebar(self):
         sidebar = QFrame()
