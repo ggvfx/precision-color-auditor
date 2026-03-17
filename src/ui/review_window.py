@@ -17,157 +17,15 @@ project_root = src_dir.parent
 if str(project_root) not in sys.path: sys.path.insert(0, str(project_root))
 if str(src_dir) not in sys.path: sys.path.insert(0, str(src_dir))
 
-from ui.widgets import create_ocio_combo
+from ui.widgets import (
+    create_ocio_combo, 
+    SampledChartDelegate, 
+    TrianglePatchDelegate, 
+    ChartMagnifier, 
+    GridMagnifier
+)
 from core.color_engine import ColorEngine
-
-class SampledChartDelegate(QStyledItemDelegate):
-    """Renders the rectified image with sample dots in the table cell."""
-    def sizeHint(self, option, index):
-        h = option.rect.height() if option.rect.height() > 0 else 120
-        return QSize(int(h * 1.5), h)
-
-    def paint(self, painter, option, index):
-        if index.column() == 0:
-            result = index.data(Qt.UserRole)
-            if result and hasattr(result, 'rectified_buffer') and result.rectified_buffer is not None:
-                # Convert numpy uint8 buffer to QImage
-                arr = result.rectified_buffer
-                h, w, ch = arr.shape
-                qimg = QImage(arr.data, w, h, ch * w, QImage.Format_RGB888)
-                pixmap = QPixmap.fromImage(qimg)
-                
-                rect = option.rect.adjusted(4, 4, -4, -4)
-                painter.drawPixmap(rect, pixmap.scaled(rect.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
-            else:
-                painter.setPen(QColor("#666666"))
-                painter.drawText(option.rect, Qt.AlignCenter, "No Image")
-        else:
-            super().paint(painter, option, index)
-
-class TrianglePatchDelegate(QStyledItemDelegate):
-    def sizeHint(self, option, index):
-        if index.column() == 8:
-            h = option.rect.height() if option.rect.height() > 0 else 120
-            padding = 3
-            patch_h = (h - (padding * 5)) / 4
-            total_w = (patch_h * 6) + (padding * 7)
-            return QSize(total_w, h)
-        return super().sizeHint(option, index)
-
-    def paint(self, painter, option, index):
-        if index.column() == 8:
-            rect = option.rect
-            painter.save()
-            painter.setRenderHint(QPainter.Antialiasing)
-            
-            # Use template-based grid if available, else fallback to 6x4
-            cols, rows = 6, 4
-            padding = 3
-            
-            patch_size = (rect.height() - (padding * (rows + 1))) / rows
-            grid_w = (patch_size * cols) + (padding * (cols - 1))
-            offset_x = rect.x() + (rect.width() - grid_w) / 2
-            offset_y = rect.y() + padding
-
-            for r in range(rows):
-                for c in range(cols):
-                    x = offset_x + (c * (patch_size + padding))
-                    y = offset_y + (r * (patch_size + padding))
-                    patch_rect = QRectF(x, y, patch_size, patch_size)
-
-                    painter.setPen(Qt.NoPen)
-                    painter.setBrush(QColor(120 + (r*20), 100 + (c*10), 150)) 
-                    t1 = QPolygonF([patch_rect.topLeft(), patch_rect.topRight(), patch_rect.bottomLeft()])
-                    painter.drawPolygon(t1)
-
-                    painter.setBrush(QColor(100 + (r*20), 80 + (c*10), 130))
-                    t2 = QPolygonF([patch_rect.bottomRight(), patch_rect.topRight(), patch_rect.bottomLeft()])
-                    painter.drawPolygon(t2)
-            
-            painter.restore()
-        else:
-            super().paint(painter, option, index)
-
-class ChartMagnifier(QWidget):
-    """Large popup for the sampled/rectified image."""
-    def __init__(self, parent=None):
-        super().__init__(parent, Qt.ToolTip | Qt.FramelessWindowHint)
-        self.setFixedSize(550, 400)
-        self.setStyleSheet("background: #1a1a1a; border: 2px solid #FFD700;")
-        self.result = None
-
-    def paintEvent(self, event):
-        if not self.result or self.result.rectified_buffer is None: return
-        painter = QPainter(self)
-        
-        arr = self.result.rectified_buffer
-        h, w, ch = arr.shape
-        qimg = QImage(arr.data, w, h, ch * w, QImage.Format_RGB888)
-        pixmap = QPixmap.fromImage(qimg)
-        
-        img_rect = self.rect().adjusted(10, 10, -10, -40)
-        painter.drawPixmap(img_rect, pixmap.scaled(img_rect.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
-        
-        painter.setPen(QColor("#FFD700"))
-        painter.drawText(self.rect().adjusted(0, 0, 0, -10), Qt.AlignHCenter | Qt.AlignBottom, 
-                         "Sampled Chart (AI Rectified View)")
-
-class GridMagnifier(QWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent, Qt.ToolTip | Qt.FramelessWindowHint)
-        # 1. Tighter overall window size
-        self.setFixedSize(450, 320) 
-        self.setStyleSheet("background: #1a1a1a; border: 2px solid #555;")
-        self.result = None
-
-    def paintEvent(self, event):
-        if not self.result: return
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-        
-        # 2. Adjusted Grid Area: Leaves 40px at the bottom for the text
-        # (top, left, bottom, right)
-        grid_area = self.rect().adjusted(10, 10, -10, -40)
-        cols, rows = 6, 4
-        padding = 5
-        
-        # Calculate size based on the restricted grid_area
-        patch_size = min((grid_area.width() - (padding*7))/6, (grid_area.height() - (padding*5))/4)
-        
-        # Center horizontally in the widget
-        grid_w = (patch_size * cols) + (padding * (cols - 1))
-        offset_x = (self.width() - grid_w) / 2
-
-        for r in range(rows):
-            for c in range(cols):
-                x = offset_x + (c * (patch_size + padding))
-                y = grid_area.y() + (r * (patch_size + padding))
-                patch_rect = QRectF(x, y, patch_size, patch_size)
-                
-                painter.setPen(Qt.NoPen)
-                painter.setBrush(QColor(120 + (r*20), 100 + (c*10), 150))
-                t1 = QPolygonF([patch_rect.topLeft(), patch_rect.topRight(), patch_rect.bottomLeft()])
-                painter.drawPolygon(t1)
-                
-                painter.setBrush(QColor(100 + (r*20), 80 + (c*10), 130))
-                t2 = QPolygonF([patch_rect.bottomRight(), patch_rect.topRight(), patch_rect.bottomLeft()])
-                painter.drawPolygon(t2)
-
-        # 3. Draw Legend (Now strictly within the bottom 40px)
-        legend_rect = QRectF(0, self.height() - 40, self.width(), 30)
-        painter.setPen(QColor("#CCCCCC"))
-        font = painter.font()
-        font.setPointSize(9)
-        font.setBold(True)
-        painter.setFont(font)
-
-        intent = getattr(self.result, 'analysis_intent', "MATCH GRADE").upper()
-        if "MATCH" in intent:
-            legend_text = "Left: Match Grade (Corrected Target)  |  Right: Input Plate (Observed)"
-        else:
-            legend_text = "Left: Neutralized Plate (Corrected)  |  Right: Target Values (Reference)"
-
-        painter.drawText(legend_rect, Qt.AlignCenter, legend_text)
+from core.models import AuditStatus
 
 class ReviewWindow(QMainWindow):
     def __init__(self, session_manager):
@@ -188,7 +46,7 @@ class ReviewWindow(QMainWindow):
 
         self.table.setMouseTracking(True)
         self.magnifier = GridMagnifier()
-        self.chart_magnifier = ChartMagnifier() # Initialize image magnifier
+        self.chart_magnifier = ChartMagnifier()
         
         self.table.cellEntered.connect(self._handle_hover)
         self.refresh_table()
@@ -314,7 +172,6 @@ class ReviewWindow(QMainWindow):
             result.input_space = new_text
             
             # 3. Mark as Dirty
-            from core.models import AuditStatus
             result.status = AuditStatus.MANUAL_EDIT
             
             # 4. Refresh the status cell (Column 10)
