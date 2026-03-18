@@ -22,7 +22,9 @@ from ui.widgets import (
     SampledChartDelegate, 
     TrianglePatchDelegate, 
     ChartMagnifier, 
-    GridMagnifier
+    GridMagnifier,
+    ActionButtons,
+    ReviewSidebar
 )
 from core.color_engine import ColorEngine
 from core.models import AuditStatus
@@ -204,44 +206,14 @@ class ReviewWindow(QMainWindow):
             print(f"[UI] Input space changed for {result.file_path} -> {new_text}. Status: DIRTY")
 
     def _create_action_buttons(self, row, file_path):
-        container = QWidget()
-        layout = QVBoxLayout(container)
-        layout.setContentsMargins(2, 4, 2, 4)
-        layout.setSpacing(4)
-
-        # 1. Redraw/Edit Bounding Box Button
-        edit_btn = QPushButton()
-        edit_btn.setIcon(qta.icon('fa5s.vector-square', color='#FFD700'))
-        edit_btn.setToolTip("Manually Redraw Bounding Box")
-        edit_btn.setFixedSize(30, 30) # Slightly smaller to fit better vertically
-        edit_btn.setStyleSheet("QPushButton { background-color: #444; border-radius: 4px; } "
-                               "QPushButton:hover { background-color: #555; }")
-        edit_btn.clicked.connect(lambda: self._on_edit_bb_clicked(file_path))
-
-        # 2. Copy CDL Button
-        copy_btn = QPushButton()
-        copy_btn.setIcon(qta.icon('fa5s.copy', color='#ADD8E6'))
-        edit_btn.setToolTip("Copy ASC-CDL values to clipboard")
-        copy_btn.setFixedSize(30, 30)
-        copy_btn.setStyleSheet("QPushButton { background-color: #444; border-radius: 4px; }"
-                               "QPushButton:hover { background-color: #555; }")
-        copy_btn.clicked.connect(lambda: self._on_copy_cdl_clicked(file_path))
-
-        # 3. Delete Row Button
-        delete_btn = QPushButton()
-        delete_btn.setIcon(qta.icon('fa5s.trash-alt', color='#ff6666'))
-        delete_btn.setToolTip("Remove from Session")
-        delete_btn.setFixedSize(30, 30)
-        delete_btn.setStyleSheet("QPushButton { background-color: #444; border-radius: 4px; } "
-                                 "QPushButton:hover { background-color: #663333; }")
-        delete_btn.clicked.connect(lambda: self._on_delete_row_clicked(row, file_path))
-
-        layout.addWidget(edit_btn)
-        layout.addWidget(copy_btn)
-        layout.addWidget(delete_btn)
-        layout.setAlignment(Qt.AlignCenter)
+        actions = ActionButtons()
         
-        return container
+        # Connect the internal widget signals to the window methods
+        actions.edit_clicked.connect(lambda: self._on_edit_bb_clicked(file_path))
+        actions.copy_clicked.connect(lambda: self._on_copy_cdl_clicked(file_path))
+        actions.delete_clicked.connect(lambda: self._on_delete_row_clicked(row, file_path))
+        
+        return actions
 
     def _on_edit_bb_clicked(self, file_path):
         """Prepares for the manual corner adjustment window."""
@@ -275,108 +247,25 @@ class ReviewWindow(QMainWindow):
         # with the lambda closures, or use a more robust ID system.
 
     def _setup_review_sidebar(self):
-        sidebar = QFrame()
-        sidebar.setFixedWidth(320)
-        sidebar.setStyleSheet("background-color: #2b2b2b; border-left: 1px solid #444;")
-        layout = QVBoxLayout(sidebar)
-
-        # --- 1. GLOBAL DISPLAY VIEW (The Lens) ---
-        view_group = QGroupBox("GLOBAL DISPLAY VIEW")
-        view_layout = QVBoxLayout(view_group)
-        view_layout.addWidget(QLabel("View Transform (UI Only):"))
+        # 1. Instantiate the new widget
+        self.sidebar = ReviewSidebar(self.color_engine, self.session)
         
-        self.view_transform_combo = QComboBox()
+        # 2. Re-point internal references so your existing methods don't break
+        # (This is the secret to not having to rewrite all your methods)
+        self.view_transform_combo = self.sidebar.view_transform_combo
+        self.de_spin = self.sidebar.de_spin
+        self.reprocess_btn = self.sidebar.reprocess_btn
         
-        # Populate using the existing color_engine logic
-        src_list, _ = self.color_engine.get_ui_lists()
-        self.view_transform_combo.addItems(src_list)
+        # 3. Connect signals to your existing window methods
+        self.sidebar.tolerance_changed.connect(self._on_tolerance_changed)
+        self.sidebar.reprocess_requested.connect(self._reprocess_dirty)
+        self.sidebar.view_changed.connect(self.table.viewport().update)
         
-        # Precise Inheritance Logic
-        first_res = next(iter(self.session.results.values()), None)
+        # 4. Add the Export Directory UI to the sidebar's dedicated layout
+        self._add_export_directory_ui(self.sidebar.export_dir_layout)
         
-        # Priority: Result Override -> Session/Settings -> Standard Default
-        initial_space = None
-        if first_res and first_res.display_space:
-            initial_space = first_res.display_space
-        else:
-            # Fallback to the default in your core settings
-            from core.config import settings
-            initial_space = settings.default_display_space
-            
-        if initial_space in src_list:
-            self.view_transform_combo.setCurrentText(initial_space)
-        else:
-            # Absolute safety fallback
-            self.view_transform_combo.setCurrentText("sRGB - Texture")
-        
-        # STYLING: Make it look distinct as a 'Global' setting
-        self.view_transform_combo.setStyleSheet("QComboBox { font-weight: bold; color: #ADD8E6; }")
-        
-        view_layout.addWidget(self.view_transform_combo)
-        layout.addWidget(view_group)
-
-        info_group = QGroupBox("INFO")
-        info_layout = QVBoxLayout(info_group)
-        info_layout.addWidget(QLabel("Audit Space (Locked):"))
-        self.audit_space_display = QComboBox()
-        self.audit_space_display.addItems(["ACEScg"])
-        self.audit_space_display.setEnabled(False) 
-        self.audit_space_display.setStyleSheet("""
-            QComboBox { 
-                background-color: #333; 
-                color: #888; 
-                font-style: italic; 
-                border: 1px solid #444; 
-            }
-        """)
-        info_layout.addWidget(self.audit_space_display)
-        layout.addWidget(info_group)
-
-        # 1. Processing Actions
-        proc_group = QGroupBox("ACTIONS")
-        proc_layout = QVBoxLayout(proc_group)
-        self.reprocess_btn = QPushButton(" REPROCESS DIRTY FILES")
-        self.reprocess_btn.setIcon(qta.icon('fa5s.sync', color='#FFD700'))
-        self.reprocess_btn.setStyleSheet("background-color: #444; font-weight: bold; height: 40px;")
-        self.reprocess_btn.clicked.connect(self._reprocess_dirty)
-        proc_layout.addWidget(self.reprocess_btn)
-        layout.addWidget(proc_group)
-
-        # 2. Tolerance Adjustment (Live Update)
-        tol_group = QGroupBox("AUDIT THRESHOLDS")
-        tol_layout = QVBoxLayout(tol_group)
-        tol_layout.addWidget(QLabel("DeltaE Tolerance:"))
-        self.de_spin = QDoubleSpinBox()
-        self.de_spin.setRange(0.1, 10.0)
-        self.de_spin.setSingleStep(0.1)
-        self.de_spin.setValue(2.0)
-        self.de_spin.valueChanged.connect(self._on_tolerance_changed)
-        tol_layout.addWidget(self.de_spin)
-        layout.addWidget(tol_group)
-
-        # 3. Export Settings
-        exp_group = QGroupBox("EXPORT OPTIONS")
-        exp_layout = QVBoxLayout(exp_group)
-        self.check_cdl = QCheckBox("Export ASC-CDL (.cdl)")
-        self.check_lut = QCheckBox("Export Cube LUT (.cube)")
-        self.check_matrix = QCheckBox("Export Matrix (.mtx)")
-        self.check_pdf = QCheckBox("Generate PDF Report")
-        self.check_csv = QCheckBox("Generate CSV Summary")
-        for cb in [self.check_cdl, self.check_lut, self.check_matrix, self.check_pdf, self.check_csv]:
-            exp_layout.addWidget(cb)
-        layout.addWidget(exp_group)
-
-        self._add_export_directory_ui(layout)
-
-        layout.addStretch()
-
-        # 4. Final Export Button
-        self.export_btn = QPushButton("EXPORT VALIDATED ITEMS")
-        self.export_btn.setMinimumHeight(60)
-        self.export_btn.setStyleSheet("background-color: #2d5a27; font-weight: bold;")
-        layout.addWidget(self.export_btn)
-
-        self.layout.addWidget(sidebar)
+        # 5. Add to the main window layout
+        self.layout.addWidget(self.sidebar)
 
     def _finalize_ui_connections(self):
         # 1. Now safely connect the Sidebar to the Table Viewport
