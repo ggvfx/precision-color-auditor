@@ -371,6 +371,10 @@ class MainWindow(QMainWindow):
         sys_info = get_system_metadata()
         stat.showMessage(f"Host: {sys_info['hostname']} | User: {sys_info['user']} | OS: {sys_info['os']}")
 
+    def _sync_settings_to_session(self):
+        # Update the session with current UI thresholds
+        self.session.delta_e_tolerance = self.tol_spin.value()
+
     def _on_proceed_clicked(self):
         """Harvests per-row signal profiles and hands them to the auditor."""
         audit_tasks = []

@@ -73,6 +73,8 @@ class SessionManager(QObject):
         # The Source of Truth: Mapping of file_path -> AuditResult
         self.results: Dict[str, AuditResult] = {}
         self.image_extensions = {'.exr', '.tif', '.tiff', '.png', '.jpg', '.jpeg'}
+
+        self.delta_e_tolerance = 2.0
         
         # Threading handles
         self._thread: Optional[QThread] = None

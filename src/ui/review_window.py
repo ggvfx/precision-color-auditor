@@ -31,6 +31,7 @@ class ReviewWindow(QMainWindow):
     def __init__(self, session_manager):
         super().__init__()
         self.session = session_manager
+        
         self.color_engine = getattr(session_manager, 'color_engine', None) 
         if not self.color_engine and hasattr(session_manager, 'sampler'):
             self.color_engine = session_manager.sampler.color_engine
@@ -45,6 +46,9 @@ class ReviewWindow(QMainWindow):
         # 1. Create the widgets in the original order for the layout
         self._setup_table()           # Table first (Left side)
         self._setup_review_sidebar()  # Sidebar second (Right side)
+
+        initial_tol = getattr(self.session, 'delta_e_tolerance', 2.0)
+        self.de_spin.setValue(initial_tol)
 
         # 2. NOW assign the Lens-aware delegate (Surgical Fix)
         # We do this here because both 'self.table' and 'self.view_transform_combo' now exist
@@ -344,6 +348,7 @@ class ReviewWindow(QMainWindow):
         tol_layout.addWidget(QLabel("DeltaE Tolerance:"))
         self.de_spin = QDoubleSpinBox()
         self.de_spin.setRange(0.1, 10.0)
+        self.de_spin.setSingleStep(0.1)
         self.de_spin.setValue(2.0)
         self.de_spin.valueChanged.connect(self._on_tolerance_changed)
         tol_layout.addWidget(self.de_spin)
@@ -402,10 +407,27 @@ class ReviewWindow(QMainWindow):
             item.setText("DIRTY")
             item.setForeground(QColor("#FFD700"))
 
-    def _on_tolerance_changed(self, val):
-        # We will implement the logic to loop through results 
-        # and flip is_pass if mean_de > val
-        pass
+    def _on_tolerance_changed(self, new_tolerance):
+        """Live-updates the PASS/FAIL status without reprocessing pixels."""
+        for row in range(self.table.rowCount()):
+            # 1. Recover the result object from the hidden data in Column 0
+            item = self.table.item(row, 0)
+            if not item: continue
+            
+            file_path = item.data(Qt.UserRole)
+            result = self.session.results.get(file_path)
+            
+            if result:
+                # 2. Re-calculate the PASS/FAIL flag based on the new threshold
+                # Logic: Result is a pass only if the mean error is below the spinbox value
+                result.is_pass = result.delta_e_mean <= new_tolerance
+                
+                # 3. Trigger a visual refresh of the Status cell (Column 9)
+                status_item = self.table.item(row, 9)
+                if status_item:
+                    self._update_status_cell(status_item, result)
+        
+        print(f"[UI] Batch re-validated against DeltaE: {new_tolerance}")
     
     def _add_export_directory_ui(self, parent_layout):
         dir_group = QGroupBox("EXPORT DIRECTORY")
@@ -497,6 +519,7 @@ if __name__ == "__main__":
             res.analysis_intent = "MATCH GRADE"
             res.is_pass = True
             res.alignment_integrity = 0.9920
+            res.delta_e_mean = 1.2
             res.status = AuditStatus.COMPLETE
             res.slope = [1.05, 1.0, 0.95]; res.offset = [0,0,0]; res.sat = 1.0
             
