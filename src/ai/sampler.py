@@ -105,10 +105,7 @@ class PatchSampler:
             )
             color_patches.append(patch)
 
-        # 5. Create the "Audit View" Proof (Optimized)
-        qc_image_raw = self.topology.generate_qc_image(rect_display, sample_coords)
-        # Use our new util to get a clean uint8 buffer for the UI
-        qc_image_uint8 = np.array(prep_for_pil(qc_image_raw))
+        qc_image_uint8 = np.array(prep_for_pil(rect_display))
 
         # 6. Build and Return the Final AuditResult
         # If manual_corners exists, it's a MANUAL_EDIT. Otherwise, it's COMPLETE.
@@ -123,6 +120,7 @@ class PatchSampler:
             status=final_status, # Preserved your status logic
             corners=raw_points,
             rectified_buffer=qc_image_uint8,
+            patch_centers=sample_coords,
             patches=color_patches,
             ai_reasoning=reasoning,
             alignment_integrity=integrity_score,

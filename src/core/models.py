@@ -89,6 +89,7 @@ class AuditResult:
     matrix_3x3: np.ndarray = field(default_factory=lambda: np.eye(3, dtype=np.float32))
     
     patches: List[ColorPatch] = field(default_factory=list)
+    patch_centers: List[Tuple[int, int]] = field(default_factory=list)
     timestamp: Optional[str] = None
 
     def get_sop_summary(self) -> str:

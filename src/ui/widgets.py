@@ -35,6 +35,7 @@ class SampledChartDelegate(QStyledItemDelegate):
         result = index.data(Qt.UserRole)
         
         if result and hasattr(result, 'rectified_buffer') and result.rectified_buffer is not None:
+            painter.setRenderHint(QPainter.Antialiasing)
             # 2. Identify the "Source" (Audit Display Space) and the "Lens" (Sidebar)
             src_space = result.display_space or "sRGB - Texture"
             tgt_space = self.view_combo.currentText()
@@ -61,10 +62,29 @@ class SampledChartDelegate(QStyledItemDelegate):
                 Qt.KeepAspectRatio, 
                 Qt.SmoothTransformation
             ))
+
+            # 6. DRAW DYNAMIC OVERLAYS (Neon Green Dots)
+            if hasattr(result, 'patch_centers') and result.patch_centers:
+                painter.setPen(Qt.NoPen)
+                painter.setBrush(QColor(0, 255, 0)) # Neon Green
+                
+                # We need to scale the coordinates from the buffer size to the UI rect size
+                scale_x = rect.width() / w
+                scale_y = rect.height() / h
+                
+                for px, py in result.patch_centers:
+                    # Draw a small circle at the scaled coordinate
+                    painter.drawEllipse(
+                        rect.x() + (px * scale_x) - 2, 
+                        rect.y() + (py * scale_y) - 2, 
+                        4, 4
+                    )
+
         else:
             painter.setPen(QColor("#666666"))
             painter.drawText(option.rect, Qt.AlignCenter, "No Image")
 
+        
 class TrianglePatchDelegate(QStyledItemDelegate):
     def __init__(self, parent=None, color_engine=None, view_combo=None):
         super().__init__(parent)
@@ -163,6 +183,19 @@ class ChartMagnifier(QWidget):
         pixmap = QPixmap.fromImage(qimg)
         img_rect = self.rect().adjusted(10, 10, -10, -40)
         painter.drawPixmap(img_rect, pixmap.scaled(img_rect.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        if hasattr(self.result, 'patch_centers') and self.result.patch_centers:
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QColor(0, 255, 0)) # Neon Green
+            
+            # Since we used KeepAspectRatio, we calculate the actual scale/offset of the image
+            scale = min(img_rect.width() / w, img_rect.height() / h)
+            offset_x = img_rect.x() + (img_rect.width() - (w * scale)) / 2
+            offset_y = img_rect.y() + (img_rect.height() - (h * scale)) / 2
+
+            for px, py in self.result.patch_centers:
+                # Draw circles (Radius 3)
+                painter.drawEllipse(QRectF(offset_x + (px * scale) - 3, 
+                                           offset_y + (py * scale) - 3, 6, 6))
         painter.setPen(QColor("#CCCCCC"))
         font = painter.font()
         font.setPointSize(9)

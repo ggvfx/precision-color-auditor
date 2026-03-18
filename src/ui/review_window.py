@@ -503,10 +503,12 @@ if __name__ == "__main__":
             mock_img = np.zeros((800, 1200, 3), dtype=np.uint8)
             cv2.putText(mock_img, "TEST RECTIFIED IMAGE", (300, 400), 
                         cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 3)
+            res.patch_centers = []
+            res.rectified_buffer = mock_img 
+
             for y in range(100, 800, 200):
                 for x in range(100, 1200, 200):
-                    cv2.circle(mock_img, (x, y), 10, (0, 255, 0), -1)
-            res.rectified_buffer = mock_img
+                    res.patch_centers.append((x, y))
 
             # Standard Macbeth 24 sRGB approximations
             macbeth_colors = [
@@ -519,10 +521,18 @@ if __name__ == "__main__":
             ]
 
             res.patches = []
+            res.patch_centers = []
             for i in range(24):
                 v_ref = np.array(macbeth_colors[i], dtype=np.float32)
                 v_src = v_ref.copy()
                 if i < 18: v_src *= 0.92 # Visual offset for testing
+
+                row_idx = i // 6
+                col_idx = i % 6
+                center_x = 100 + (col_idx * 200)
+                center_y = 100 + (row_idx * 200)
+                
+                res.patch_centers.append((center_x, center_y))
                 
                 res.patches.append(ColorPatch(
                     name=f"Macbeth_{i}",
@@ -534,6 +544,8 @@ if __name__ == "__main__":
                     visual_ref_rgb=v_ref
                 ))
             self.results = {res.file_path: res}
+
+
 
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
