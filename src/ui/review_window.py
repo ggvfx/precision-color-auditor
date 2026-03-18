@@ -41,12 +41,27 @@ class ReviewWindow(QMainWindow):
         self.setCentralWidget(self.main_widget)
         self.layout = QHBoxLayout(self.main_widget)
 
-        self._setup_table()
-        self._setup_review_sidebar()
+        # 1. Create the base widgets (No inter-dependencies yet)
+        # 1. Create the widgets in the original order for the layout
+        self._setup_table()           # Table first (Left side)
+        self._setup_review_sidebar()  # Sidebar second (Right side)
+
+        # 2. NOW assign the Lens-aware delegate (Surgical Fix)
+        # We do this here because both 'self.table' and 'self.view_transform_combo' now exist
+        self.chart_delegate = SampledChartDelegate(self.table, self.color_engine, self.view_transform_combo)
+        self.table.setItemDelegateForColumn(6, self.chart_delegate)
+        self.patch_delegate = TrianglePatchDelegate(self.table, self.color_engine, self.view_transform_combo)
+        self.table.setItemDelegateForColumn(7, self.patch_delegate)
+        
+        # 3. Connect the "Lens" signal
+        self.view_transform_combo.currentTextChanged.connect(self.table.viewport().update)
+        self.magnifier = GridMagnifier(color_engine=self.color_engine)
+        self.chart_magnifier = ChartMagnifier(color_engine=self.color_engine) 
+        
+        # 2. Finalize the Bridge (Now that both table and sidebar exist)
+        self._finalize_ui_connections()
 
         self.table.setMouseTracking(True)
-        self.magnifier = GridMagnifier()
-        self.chart_magnifier = ChartMagnifier()
         
         self.table.cellEntered.connect(self._handle_hover)
         self.refresh_table()
@@ -61,7 +76,7 @@ class ReviewWindow(QMainWindow):
         self.table.setHorizontalHeaderLabels(headers)
         
         # Apply both delegates
-        self.table.setItemDelegateForColumn(6, SampledChartDelegate(self.table))
+        #self.table.setItemDelegateForColumn(6, SampledChartDelegate(self.table, self.color_engine, self.view_transform_combo))
         self.table.setItemDelegateForColumn(7, TrianglePatchDelegate(self.table))
         
         header = self.table.horizontalHeader()
@@ -123,13 +138,17 @@ class ReviewWindow(QMainWindow):
         self.magnifier.hide()
         self.chart_magnifier.hide()
 
+        current_view = self.view_transform_combo.currentText()
+
         if column == 6: # Sampled Chart Hover
             self.chart_magnifier.result = result
+            self.chart_magnifier.view_space = current_view
             self.chart_magnifier.move(pos.x() + 20, pos.y() - 200)
             self.chart_magnifier.show()
             self.chart_magnifier.update()
         elif column == 7: # Visual Check Hover
             self.magnifier.result = result
+            self.magnifier.view_space = current_view
             self.magnifier.move(pos.x() + 20, pos.y() - 150)
             self.magnifier.show()
             self.magnifier.update()
@@ -257,6 +276,41 @@ class ReviewWindow(QMainWindow):
         sidebar.setStyleSheet("background-color: #2b2b2b; border-left: 1px solid #444;")
         layout = QVBoxLayout(sidebar)
 
+        # --- 1. GLOBAL DISPLAY VIEW (The Lens) ---
+        view_group = QGroupBox("GLOBAL DISPLAY VIEW")
+        view_layout = QVBoxLayout(view_group)
+        view_layout.addWidget(QLabel("View Transform (UI Only):"))
+        
+        self.view_transform_combo = QComboBox()
+        
+        # Populate using the existing color_engine logic
+        src_list, _ = self.color_engine.get_ui_lists()
+        self.view_transform_combo.addItems(src_list)
+        
+        # Precise Inheritance Logic
+        first_res = next(iter(self.session.results.values()), None)
+        
+        # Priority: Result Override -> Session/Settings -> Standard Default
+        initial_space = None
+        if first_res and first_res.display_space:
+            initial_space = first_res.display_space
+        else:
+            # Fallback to the default in your core settings
+            from core.config import settings
+            initial_space = settings.default_display_space
+            
+        if initial_space in src_list:
+            self.view_transform_combo.setCurrentText(initial_space)
+        else:
+            # Absolute safety fallback
+            self.view_transform_combo.setCurrentText("sRGB - Texture")
+        
+        # STYLING: Make it look distinct as a 'Global' setting
+        self.view_transform_combo.setStyleSheet("QComboBox { font-weight: bold; color: #ADD8E6; }")
+        
+        view_layout.addWidget(self.view_transform_combo)
+        layout.addWidget(view_group)
+
         info_group = QGroupBox("INFO")
         info_layout = QVBoxLayout(info_group)
         info_layout.addWidget(QLabel("Audit Space (Locked):"))
@@ -318,6 +372,17 @@ class ReviewWindow(QMainWindow):
         layout.addWidget(self.export_btn)
 
         self.layout.addWidget(sidebar)
+
+    def _finalize_ui_connections(self):
+        # 1. Now safely connect the Sidebar to the Table Viewport
+        self.view_transform_combo.currentTextChanged.connect(self.table.viewport().update)
+
+        # 2. Now safely assign the Lens-aware delegates
+        self.chart_delegate = SampledChartDelegate(self.table, self.color_engine, self.view_transform_combo)
+        self.table.setItemDelegateForColumn(6, self.chart_delegate)
+        
+        # (Task 4 will go here next)
+        # self.patch_delegate = TrianglePatchDelegate(...)
 
     def _update_status_cell(self, item, result):
         """Applies your custom failure labeling and colors."""
@@ -414,7 +479,7 @@ class ReviewWindow(QMainWindow):
         self.session.run_batch(dirty_paths)
     
 if __name__ == "__main__":
-    from core.models import AuditResult, AuditStatus
+    from core.models import AuditResult, AuditStatus, ColorPatch
     from core.color_engine import ColorEngine
     import cv2
     import numpy as np
@@ -428,23 +493,46 @@ if __name__ == "__main__":
             res.width, res.height = 4608, 3164
             res.input_space = "ARRI LogC4"
             res.audit_space = "ACEScg" 
+            res.display_space = "sRGB - Texture" # Set this to fix the inheritance bug
             res.analysis_intent = "MATCH GRADE"
             res.is_pass = True
             res.alignment_integrity = 0.9920
             res.status = AuditStatus.COMPLETE
             res.slope = [1.05, 1.0, 0.95]; res.offset = [0,0,0]; res.sat = 1.0
             
-            # MOCK RECTIFIED IMAGE (Placeholder for testing)
-            # In real use, sampler.py provides this
             mock_img = np.zeros((800, 1200, 3), dtype=np.uint8)
             cv2.putText(mock_img, "TEST RECTIFIED IMAGE", (300, 400), 
                         cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 3)
-            # Draw some mock sample dots
             for y in range(100, 800, 200):
                 for x in range(100, 1200, 200):
                     cv2.circle(mock_img, (x, y), 10, (0, 255, 0), -1)
             res.rectified_buffer = mock_img
-            
+
+            # Standard Macbeth 24 sRGB approximations
+            macbeth_colors = [
+                [0.45, 0.32, 0.24], [0.76, 0.58, 0.50], [0.36, 0.48, 0.61], [0.35, 0.43, 0.25],
+                [0.50, 0.50, 0.73], [0.38, 0.74, 0.66], [0.85, 0.48, 0.18], [0.28, 0.36, 0.65],
+                [0.75, 0.35, 0.39], [0.36, 0.23, 0.42], [0.62, 0.74, 0.25], [0.90, 0.63, 0.16],
+                [0.05, 0.19, 0.43], [0.26, 0.58, 0.30], [0.69, 0.22, 0.26], [0.94, 0.86, 0.12],
+                [0.72, 0.33, 0.57], [0.00, 0.52, 0.65], [0.95, 0.95, 0.95], [0.78, 0.78, 0.78],
+                [0.62, 0.62, 0.62], [0.47, 0.47, 0.47], [0.33, 0.33, 0.33], [0.13, 0.13, 0.13]
+            ]
+
+            res.patches = []
+            for i in range(24):
+                v_ref = np.array(macbeth_colors[i], dtype=np.float32)
+                v_src = v_ref.copy()
+                if i < 18: v_src *= 0.92 # Visual offset for testing
+                
+                res.patches.append(ColorPatch(
+                    name=f"Macbeth_{i}",
+                    observed_rgb=v_src,
+                    target_rgb=v_ref,
+                    local_center=(0, 0),
+                    index=i,
+                    visual_src_rgb=v_src,
+                    visual_ref_rgb=v_ref
+                ))
             self.results = {res.file_path: res}
 
     app = QApplication(sys.argv)

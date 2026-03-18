@@ -149,3 +149,40 @@ class ColorEngine:
         display_buf = self.transform_buffer(raw_buffer, input_space, display_space)
         
         return audit_buf, display_buf
+    
+    def transform_display_bridge(self, pixel_buffer: np.ndarray, src_display: str, tgt_display: str) -> np.ndarray:
+        """
+        Lightweight Display-to-Display bridge.
+        Used for UI 'Lens' transforms without touching underlying audit data.
+        """
+        # 1. Short-circuit: If the lens matches the source, do nothing.
+        if src_display == tgt_display:
+            return pixel_buffer
+
+        try:
+            h, w = pixel_buffer.shape[:2]
+            
+            # 2. Ensure data is Float32 and Contiguous for OCIO
+            # We copy to ensure the original rectified_buffer remains untouched
+            data = pixel_buffer.astype(np.float32, copy=True)
+            data = np.ascontiguousarray(data)
+
+            # 3. Get the direct Display-to-Display Processor
+            processor = self.config.getProcessor(src_display, tgt_display)
+            cpu = processor.getDefaultCPUProcessor()
+
+            # 4. Apply transform in-place on the copy
+            img_desc = OCIO.PackedImageDesc(data, w, h, 3)
+            cpu.apply(img_desc)
+
+            # 5. Safety clip for UI stability
+            np.clip(data, 0.0, 1.0, out=data)
+
+            return data.reshape(h, w, 3)
+
+        except Exception as e:
+            print(f"[ColorEngine] Bridge Transform Failed: {e}")
+            # Fallback: Return original buffer so the UI doesn't crash
+            return pixel_buffer
+        
+    
