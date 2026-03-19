@@ -323,10 +323,11 @@ class ActionButtons(QWidget):
         layout.setAlignment(Qt.AlignCenter)
 
 class ReviewSidebar(QFrame):
-    """Surgical migration of the Review Window sidebar."""
+    """Refactored Sidebar with 'Funnel' ordering and Status Filtering."""
     view_changed = Signal(str)
     reprocess_requested = Signal()
     tolerance_changed = Signal(float)
+    filter_changed = Signal(str)  # New signal
     export_requested = Signal()
 
     def __init__(self, color_engine, session, parent=None):
@@ -341,87 +342,97 @@ class ReviewSidebar(QFrame):
         self._init_ui()
 
     def _init_ui(self):
-        # --- 1. GLOBAL DISPLAY VIEW (The Lens) ---
-        view_group = QGroupBox("GLOBAL DISPLAY VIEW")
-        view_layout = QVBoxLayout(view_group)
-        view_layout.addWidget(QLabel("View Transform (UI Only):"))
-        
-        self.view_transform_combo = QComboBox()
-        
-        # Populate using the existing color_engine logic
-        src_list, _ = self.color_engine.get_ui_lists()
-        self.view_transform_combo.addItems(src_list)
-        
-        # Precise Inheritance Logic
-        first_res = next(iter(self.session.results.values()), None)
-        
-        initial_space = None
-        if first_res and first_res.display_space:
-            initial_space = first_res.display_space
-        else:
-            from core.config import settings
-            initial_space = settings.default_display_space
-            
-        if initial_space in src_list:
-            self.view_transform_combo.setCurrentText(initial_space)
-        else:
-            self.view_transform_combo.setCurrentText("sRGB - Texture")
-        
-        self.view_transform_combo.setStyleSheet("QComboBox { font-weight: bold; color: #ADD8E6; }")
-        
-        # Signal connection
-        self.view_transform_combo.currentTextChanged.connect(self.view_changed.emit)
-        
-        view_layout.addWidget(self.view_transform_combo)
-        self.layout.addWidget(view_group)
+        # --- 1. COLOR PIPELINE ---
+        pipeline_group = QGroupBox("COLOR PIPELINE")
+        pipe_layout = QVBoxLayout(pipeline_group)
 
-        # --- INFO ---
-        info_group = QGroupBox("INFO")
-        info_layout = QVBoxLayout(info_group)
-        info_layout.addWidget(QLabel("Audit Space (Locked):"))
+        combo_style = """
+            QComboBox {
+                background-color: #333;
+                border: 1px solid #555;
+                border-radius: 3px;
+                padding: 4px;
+                color: #EEE;
+                font-weight: bold;
+            }
+            /* Subtle border glow on hover - does not affect arrows */
+            QComboBox:hover {
+                border: 1px solid #ADD8E6;
+            }
+            /* This styles the actual dropdown list selection */
+            QComboBox QAbstractItemView {
+                background-color: #222;
+                color: #EEE;
+                selection-background-color: #4a90e2;
+                selection-color: white;
+                outline: 0px;
+            }
+        """
+        
+        pipe_layout.addWidget(QLabel("Audit Space (Locked):"))
         self.audit_space_display = QComboBox()
         self.audit_space_display.addItems(["ACEScg"])
         self.audit_space_display.setEnabled(False) 
-        self.audit_space_display.setStyleSheet("""
-            QComboBox { 
-                background-color: #333; 
-                color: #888; 
-                font-style: italic; 
-                border: 1px solid #444; 
-            }
-        """)
-        info_layout.addWidget(self.audit_space_display)
-        self.layout.addWidget(info_group)
+        self.audit_space_display.setStyleSheet(combo_style + "QComboBox { color: #888; font-style: italic; }")
+        pipe_layout.addWidget(self.audit_space_display)
 
-        # --- 1. Processing Actions ---
-        proc_group = QGroupBox("ACTIONS")
-        proc_layout = QVBoxLayout(proc_group)
-        self.reprocess_btn = QPushButton(" REPROCESS DIRTY FILES")
-        self.reprocess_btn.setIcon(qta.icon('fa5s.sync', color='#FFD700'))
-        self.reprocess_btn.setStyleSheet("background-color: #444; font-weight: bold; height: 40px;")
+        pipe_layout.addWidget(QLabel("View Transform (UI Only):"))
+        self.view_transform_combo = QComboBox()
+        src_list, _ = self.color_engine.get_ui_lists()
+        self.view_transform_combo.addItems(src_list)
         
-        # Signal connection
-        self.reprocess_btn.clicked.connect(self.reprocess_requested.emit)
+        # Set initial value
+        first_res = next(iter(self.session.results.values()), None)
+        initial_space = first_res.display_space if first_res and first_res.display_space else "sRGB - Texture"
+        self.view_transform_combo.setCurrentText(initial_space)
         
-        proc_layout.addWidget(self.reprocess_btn)
-        self.layout.addWidget(proc_group)
+        # Apply style with Blue text override
+        self.view_transform_combo.setStyleSheet(combo_style + "QComboBox { color: #ADD8E6; }")
+        self.view_transform_combo.currentTextChanged.connect(self.view_changed.emit)
+        pipe_layout.addWidget(self.view_transform_combo)
+        self.layout.addWidget(pipeline_group)
 
-        # --- 2. Tolerance Adjustment (Live Update) ---
+        # --- 2. STATUS FILTER ---
+        filter_group = QGroupBox("STATUS FILTER")
+        filter_layout = QVBoxLayout(filter_group)
+        self.status_filter_combo = QComboBox()
+        self.status_filter_combo.addItems(["SHOW ALL", "PASS", "FAIL (DeltaE)", "FAIL (Geometry)", "DIRTY"])
+        self.status_filter_combo.setStyleSheet(combo_style)
+        self.status_filter_combo.currentTextChanged.connect(self.filter_changed.emit)
+        filter_layout.addWidget(self.status_filter_combo)
+        self.layout.addWidget(filter_group)
+
+        # --- 3. AUDIT THRESHOLDS ---
         tol_group = QGroupBox("AUDIT THRESHOLDS")
         tol_layout = QVBoxLayout(tol_group)
         tol_layout.addWidget(QLabel("DeltaE Tolerance:"))
         self.de_spin = QDoubleSpinBox()
         self.de_spin.setRange(0.1, 10.0)
         self.de_spin.setSingleStep(0.1)
+        self.de_spin.setDecimals(1)
         self.de_spin.setValue(2.0)
-        
-        # Signal connection
         self.de_spin.valueChanged.connect(self.tolerance_changed.emit)
-        
         tol_layout.addWidget(self.de_spin)
         self.layout.addWidget(tol_group)
 
-        # --- 3. Export Settings ---
+        # --- 4. ACTIONS ---
+        proc_group = QGroupBox("ACTIONS")
+        proc_layout = QVBoxLayout(proc_group)
+        self.reprocess_btn = QPushButton(" REPROCESS DIRTY FILES")
+        self.reprocess_btn.setIcon(qta.icon('fa5s.sync', color='#FFD700'))
+        self.reprocess_btn.setStyleSheet("background-color: #444; font-weight: bold; height: 40px;")
+        self.reprocess_btn.clicked.connect(self.reprocess_requested.emit)
+        proc_layout.addWidget(self.reprocess_btn)
+        self.layout.addWidget(proc_group)
+
+        # Push the remaining items to the bottom
+        self.layout.addStretch()
+
+        # --- 5. EXPORT DIRECTORY (Pinned to bottom) ---
+        self.export_dir_layout = QVBoxLayout()
+        self.layout.addLayout(self.export_dir_layout)
+
+        # --- 6. EXPORT OPTIONS (Pinned to bottom) ---
         exp_group = QGroupBox("EXPORT OPTIONS")
         exp_layout = QVBoxLayout(exp_group)
         self.check_cdl = QCheckBox("Export ASC-CDL (.cdl)")
@@ -433,18 +444,9 @@ class ReviewSidebar(QFrame):
             exp_layout.addWidget(cb)
         self.layout.addWidget(exp_group)
 
-        # Placeholder for Export Dir (Added via ReviewWindow for now or migrated later)
-        self.export_dir_layout = QVBoxLayout()
-        self.layout.addLayout(self.export_dir_layout)
-
-        self.layout.addStretch()
-
-        # --- 4. Final Export Button ---
+        # --- 7. FINAL EXPORT BUTTON ---
         self.export_btn = QPushButton("EXPORT VALIDATED ITEMS")
         self.export_btn.setMinimumHeight(60)
         self.export_btn.setStyleSheet("background-color: #2d5a27; font-weight: bold;")
-        
-        # Signal connection
         self.export_btn.clicked.connect(self.export_requested.emit)
-        
         self.layout.addWidget(self.export_btn)

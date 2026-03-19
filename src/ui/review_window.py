@@ -247,24 +247,20 @@ class ReviewWindow(QMainWindow):
         # with the lambda closures, or use a more robust ID system.
 
     def _setup_review_sidebar(self):
-        # 1. Instantiate the new widget
         self.sidebar = ReviewSidebar(self.color_engine, self.session)
         
-        # 2. Re-point internal references so your existing methods don't break
-        # (This is the secret to not having to rewrite all your methods)
+        # References for existing methods
         self.view_transform_combo = self.sidebar.view_transform_combo
         self.de_spin = self.sidebar.de_spin
         self.reprocess_btn = self.sidebar.reprocess_btn
         
-        # 3. Connect signals to your existing window methods
+        # Connections
         self.sidebar.tolerance_changed.connect(self._on_tolerance_changed)
         self.sidebar.reprocess_requested.connect(self._reprocess_dirty)
         self.sidebar.view_changed.connect(self.table.viewport().update)
+        self.sidebar.filter_changed.connect(self._apply_status_filter) # Filter Connection
         
-        # 4. Add the Export Directory UI to the sidebar's dedicated layout
         self._add_export_directory_ui(self.sidebar.export_dir_layout)
-        
-        # 5. Add to the main window layout
         self.layout.addWidget(self.sidebar)
 
     def _finalize_ui_connections(self):
@@ -279,27 +275,50 @@ class ReviewWindow(QMainWindow):
         # self.patch_delegate = TrianglePatchDelegate(...)
 
     def _update_status_cell(self, item, result):
-        """Applies your custom failure labeling and colors."""
-        if not result.is_pass:
-            if result.alignment_integrity < 0.05: # Your integrity threshold
-                item.setText("FAIL (Geometry)")
-                item.setForeground(QColor("#ff6666"))
-            else:
-                item.setText("FAIL (DeltaE)")
-                item.setForeground(QColor("#ffb366"))
-        else:
-            item.setText("PASS")
-            item.setForeground(QColor("#66ff66"))
-            
-        # Add 'Dirty' override if status is MANUAL_EDIT
+        """Applies labels/colors and returns the status string for filtering."""
+        status_text = ""
+        
+        # 1. Determine Logic
         if result.status.name == "MANUAL_EDIT":
-            item.setText("DIRTY")
-            item.setForeground(QColor("#FFD700"))
+            status_text = "DIRTY"
+            item.setForeground(QColor("#FFD700")) # Gold
+        elif not result.is_pass:
+            # Check if it's a total failure or just out of tolerance
+            if result.alignment_integrity < 0.05:
+                status_text = "FAIL (Geometry)"
+                item.setForeground(QColor("#ff6666")) # Red
+            else:
+                status_text = "FAIL (DeltaE)"
+                item.setForeground(QColor("#ffb366")) # Orange
+        else:
+            status_text = "PASS"
+            item.setForeground(QColor("#66ff66")) # Green
+        
+        item.setText(status_text)
+        return status_text
+
+    def _apply_status_filter(self, filter_text=None):
+        """Hides or shows rows based on the Sidebar's status filter."""
+        # Fallback to the current sidebar setting if no text is passed
+        if filter_text is None:
+            filter_text = self.sidebar.status_filter_combo.currentText()
+            
+        for row in range(self.table.rowCount()):
+            status_item = self.table.item(row, 9)
+            if not status_item: continue
+            
+            row_status = status_item.text()
+            
+            if filter_text == "SHOW ALL":
+                self.table.setRowHidden(row, False)
+            else:
+                # If row status matches filter, show it. Otherwise, hide it.
+                should_hide = (row_status != filter_text)
+                self.table.setRowHidden(row, should_hide)
 
     def _on_tolerance_changed(self, new_tolerance):
-        """Live-updates the PASS/FAIL status without reprocessing pixels."""
+        """Updates status and instantly refreshes active filters."""
         for row in range(self.table.rowCount()):
-            # 1. Recover the result object from the hidden data in Column 0
             item = self.table.item(row, 0)
             if not item: continue
             
@@ -307,16 +326,19 @@ class ReviewWindow(QMainWindow):
             result = self.session.results.get(file_path)
             
             if result:
-                # 2. Re-calculate the PASS/FAIL flag based on the new threshold
-                # Logic: Result is a pass only if the mean error is below the spinbox value
+                # Re-calculate PASS/FAIL based on the new threshold
                 result.is_pass = result.delta_e_mean <= new_tolerance
                 
-                # 3. Trigger a visual refresh of the Status cell (Column 9)
                 status_item = self.table.item(row, 9)
                 if status_item:
                     self._update_status_cell(status_item, result)
         
-        print(f"[UI] Batch re-validated against DeltaE: {new_tolerance}")
+        # This is the 'Instant Hide' trigger
+        self._apply_status_filter()
+        print(f"[UI] Batch re-validated. Filter: {self.sidebar.status_filter_combo.currentText()}")
+        # Instant Hide Logic: Trigger filter refresh after status update
+        self._apply_status_filter()
+        print(f"[UI] Batch re-validated. Filter refreshed.")
     
     def _add_export_directory_ui(self, parent_layout):
         dir_group = QGroupBox("EXPORT DIRECTORY")
