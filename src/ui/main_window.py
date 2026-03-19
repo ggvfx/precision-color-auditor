@@ -25,6 +25,9 @@ try:
     from core.config import settings
     from exporters.utils import get_system_metadata 
     from ui.widgets import create_ocio_combo
+    from core.session import SessionManager
+    from ai.sampler import PatchSampler
+    from ai.engine import ChartDetector
 except ImportError as e:
     print(f"Critical Import Error: {e}")
     sys.exit(1)
@@ -33,6 +36,9 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.color_engine = ColorEngine()
+        self.ai_detector = ChartDetector()
+        self.sampler = PatchSampler(self.color_engine, self.ai_detector)
+        self.session = SessionManager(engine=self.color_engine, sampler=self.sampler)
         self.setWindowTitle("Precision Color Auditor - Setup")
         self.setMinimumSize(1300, 850)
         
@@ -186,7 +192,7 @@ class MainWindow(QMainWindow):
         self.process_btn.setStyleSheet("background-color: #2d5a27; font-weight: bold;")
         self.process_btn.setEnabled(True) 
         layout.addWidget(self.process_btn)
-        self.process_btn.clicked.connect(self._test_backend_rewiring)
+        self.process_btn.clicked.connect(self._on_proceed_to_review)
 
         # FINAL STEP: Add the sidebar to the main layout
         self.layout.addWidget(sidebar)
@@ -398,6 +404,38 @@ class MainWindow(QMainWindow):
             audit_tasks.append(task)
             
         self._launch_audit_process(audit_tasks)
+
+    def _on_proceed_to_review(self):
+        """Gathers UI state and transitions to the ReviewWindow."""
+        
+        # 1. Update Global Session Settings
+        self.session.delta_e_tolerance = self.tol_spin.value()
+        self.session.results.clear() # Clear any previous run data
+
+        # 2. Harvest the Table Rows
+        from core.models import AuditResult, AuditStatus
+        
+        for row in range(self.table.rowCount()):
+            combo = self.table.cellWidget(row, 4)
+            file_path = combo.property("file_path")
+            
+            # Create a real result object for this file
+            res = AuditResult(file_path=file_path)
+            res.input_space = combo.currentText()
+            res.display_space = self.display_space_combo.currentText()
+            res.analysis_intent = "NEUTRALIZE" if self.radio_neutral.isChecked() else "MATCH GRADE"
+            res.status = AuditStatus.READY
+            
+            # Add to the session 'Brain'
+            self.session.results[file_path] = res
+
+        # 3. Launch the Review Window
+        from ui.review_window import ReviewWindow
+        self.review_win = ReviewWindow(self.session)
+        self.review_win.show()
+        
+        # Hide setup window so the user stays in the current 'Step'
+        self.hide()
 
     def _test_backend_rewiring(self):
         """Verifies UI-to-Backend data flow."""
