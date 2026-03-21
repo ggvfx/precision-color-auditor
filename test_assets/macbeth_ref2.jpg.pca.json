@@ -1,0 +1,217 @@
+{
+    "template": "macbeth_24",
+    "is_pass": true,
+    "status": "COMPLETE",
+    "corners": [
+        [
+            357.0730285644531,
+            137.72837829589844
+        ],
+        [
+            1470.0,
+            154.59091186523438
+        ],
+        [
+            1470.0,
+            965.6312866210938
+        ],
+        [
+            315.8399353027344,
+            926.3111572265625
+        ]
+    ],
+    "patches": [
+        {
+            "name": "Patch_0",
+            "delta_e": 0.0,
+            "local_center": [
+                130,
+                118
+            ]
+        },
+        {
+            "name": "Patch_1",
+            "delta_e": 0.0,
+            "local_center": [
+                318,
+                118
+            ]
+        },
+        {
+            "name": "Patch_2",
+            "delta_e": 0.0,
+            "local_center": [
+                506,
+                118
+            ]
+        },
+        {
+            "name": "Patch_3",
+            "delta_e": 0.0,
+            "local_center": [
+                694,
+                118
+            ]
+        },
+        {
+            "name": "Patch_4",
+            "delta_e": 0.0,
+            "local_center": [
+                882,
+                118
+            ]
+        },
+        {
+            "name": "Patch_5",
+            "delta_e": 0.0,
+            "local_center": [
+                1070,
+                118
+            ]
+        },
+        {
+            "name": "Patch_6",
+            "delta_e": 0.0,
+            "local_center": [
+                130,
+                306
+            ]
+        },
+        {
+            "name": "Patch_7",
+            "delta_e": 0.0,
+            "local_center": [
+                318,
+                306
+            ]
+        },
+        {
+            "name": "Patch_8",
+            "delta_e": 0.0,
+            "local_center": [
+                506,
+                306
+            ]
+        },
+        {
+            "name": "Patch_9",
+            "delta_e": 0.0,
+            "local_center": [
+                694,
+                306
+            ]
+        },
+        {
+            "name": "Patch_10",
+            "delta_e": 0.0,
+            "local_center": [
+                882,
+                306
+            ]
+        },
+        {
+            "name": "Patch_11",
+            "delta_e": 0.0,
+            "local_center": [
+                1070,
+                306
+            ]
+        },
+        {
+            "name": "Patch_12",
+            "delta_e": 0.0,
+            "local_center": [
+                130,
+                494
+            ]
+        },
+        {
+            "name": "Patch_13",
+            "delta_e": 0.0,
+            "local_center": [
+                318,
+                494
+            ]
+        },
+        {
+            "name": "Patch_14",
+            "delta_e": 0.0,
+            "local_center": [
+                506,
+                494
+            ]
+        },
+        {
+            "name": "Patch_15",
+            "delta_e": 0.0,
+            "local_center": [
+                694,
+                494
+            ]
+        },
+        {
+            "name": "Patch_16",
+            "delta_e": 0.0,
+            "local_center": [
+                882,
+                494
+            ]
+        },
+        {
+            "name": "Patch_17",
+            "delta_e": 0.0,
+            "local_center": [
+                1070,
+                494
+            ]
+        },
+        {
+            "name": "Patch_18",
+            "delta_e": 0.0,
+            "local_center": [
+                130,
+                682
+            ]
+        },
+        {
+            "name": "Patch_19",
+            "delta_e": 0.0,
+            "local_center": [
+                318,
+                682
+            ]
+        },
+        {
+            "name": "Patch_20",
+            "delta_e": 0.0,
+            "local_center": [
+                506,
+                682
+            ]
+        },
+        {
+            "name": "Patch_21",
+            "delta_e": 0.0,
+            "local_center": [
+                694,
+                682
+            ]
+        },
+        {
+            "name": "Patch_22",
+            "delta_e": 0.0,
+            "local_center": [
+                882,
+                682
+            ]
+        },
+        {
+            "name": "Patch_23",
+            "delta_e": 0.0,
+            "local_center": [
+                1070,
+                682
+            ]
+        }
+    ]
+}

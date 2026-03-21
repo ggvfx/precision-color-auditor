@@ -18,6 +18,7 @@ from typing import List, Optional, Dict
 
 from PySide6.QtCore import QObject, Signal, QThread, Slot
 from .models import AuditResult, AuditStatus, ColorPatch
+from .ingest import ImageIngestor
 
 class AuditWorker(QObject):
     """
@@ -28,10 +29,11 @@ class AuditWorker(QObject):
     batch_done = Signal()           # Entire list finished
     error = Signal(str)             # Error reporting
 
-    def __init__(self, sampler, file_list: List[str]):
+    def __init__(self, sampler, file_list: List[str], results_dict: Dict):
         super().__init__()
         self.sampler = sampler
         self.file_list = file_list
+        self.results_dict = results_dict
         self._abort = False
 
     @Slot()
@@ -41,13 +43,33 @@ class AuditWorker(QObject):
                 break
             
             try:
-                # Note: In the final app, the SessionManager/UI will provide 
-                # the actual image buffers to the sampler here.
-                # result = self.sampler.sample_all(display_buf, audit_buf, file_path)
-                # self.image_done.emit(result)
-                pass
+                # 1. Update status to PENDING so UI can show a spinner
+                res = self.results_dict.get(file_path)
+                res.status = AuditStatus.PENDING
+                
+                # 2. Load pixels
+                pixels, meta = ImageIngestor.load_image(file_path)
+                
+                # 3. Create the Dual Buffers (Math vs Visual)
+                # We use the frozen result object to get the user's space selection
+                audit_buf, display_buf = self.sampler.color_engine.get_dual_buffers(
+                    pixels, 
+                    res
+                )
+                
+                # 4. Execute the AI Sampling
+                # Passing the dual branches: display_buf for AI, audit_buf for math
+                final_result = self.sampler.sample_all(
+                    display_buffer=display_buf,
+                    audit_buffer=audit_buf,
+                    source_path=file_path
+                )
+                
+                self.image_done.emit(final_result)
+                
             except Exception as e:
-                self.error.emit(f"Failed {file_path}: {str(e)}")
+                print(f"[WORKER CRASH] {file_path}: {e}")
+                self.error.emit(str(e))
         
         self.batch_done.emit()
 
@@ -208,7 +230,7 @@ class SessionManager(QObject):
             return # Avoid double-processing
 
         self._thread = QThread()
-        self._worker = AuditWorker(self.sampler, file_list)
+        self._worker = AuditWorker(self.sampler, file_list, self.results)
         self._worker.moveToThread(self._thread)
 
         # Connect signals
