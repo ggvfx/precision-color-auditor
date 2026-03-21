@@ -28,6 +28,8 @@ try:
     from core.session import SessionManager
     from ai.sampler import PatchSampler
     from ai.engine import ChartDetector
+    from core.models import AuditResult, AuditStatus
+    from ui.review_window import ReviewWindow
 except ImportError as e:
     print(f"Critical Import Error: {e}")
     sys.exit(1)
@@ -38,7 +40,7 @@ class MainWindow(QMainWindow):
         self.color_engine = ColorEngine()
         self.ai_detector = ChartDetector()
         self.sampler = PatchSampler(self.color_engine, self.ai_detector)
-        self.session = SessionManager(engine=self.color_engine, sampler=self.sampler)
+        self.session = SessionManager(color_engine=self.color_engine, sampler=self.sampler)
         self.setWindowTitle("Precision Color Auditor - Setup")
         self.setMinimumSize(1300, 850)
         
@@ -218,12 +220,12 @@ class MainWindow(QMainWindow):
         # Col 4 renamed to "Signal Profile"
         # Col 6 added for Remove Button
         self.table = QTableWidget(0, 7)
-        self.table.setHorizontalHeaderLabels(["Thumb", "Filename", "Format", "Resolution", "Signal Profile", "Status", ""])
+        self.table.setHorizontalHeaderLabels(["Thumb", "Filename", "Camera Info","Format", "Resolution", "Signal Profile", "Status", ""])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Fixed)
-        self.table.horizontalHeader().setSectionResizeMode(6, QHeaderView.Fixed)
+        self.table.horizontalHeader().setSectionResizeMode(7, QHeaderView.Fixed)
         self.table.setColumnWidth(0, 65)
-        self.table.setColumnWidth(6, 40)
+        self.table.setColumnWidth(7, 40)
         self.table.setIconSize(QSize(60, 45))
         queue_container.addWidget(self.table)
         self.layout.addLayout(queue_container, stretch=1)
@@ -262,30 +264,38 @@ class MainWindow(QMainWindow):
             thumb_label.setAlignment(Qt.AlignCenter)
             self.table.setCellWidget(row, 0, thumb_label)
 
-            # 2. Text Metadata
+            # 2. Filename (Col 1)
             self.table.setItem(row, 1, QTableWidgetItem(os.path.basename(path)))
-            self.table.setItem(row, 2, QTableWidgetItem(meta['file_format']))
-            self.table.setItem(row, 3, QTableWidgetItem(f"{meta['width']}x{meta['height']}"))
-            self.table.setItem(row, 5, QTableWidgetItem("Ready"))
 
-            # 3. Signal Profile Dropdown
+            # 3. Camera Info (Col 2)
+            make = meta.get('camera_make', 'Unknown')
+            model = meta.get('camera_model', 'Unknown')
+            cam_str = f"{make} {model}" if make != "Unknown" else "Generic/Virtual"
+            self.table.setItem(row, 2, QTableWidgetItem(cam_str))
+
+            # 4. Format & Resolution (Shifted indices)
+            self.table.setItem(row, 3, QTableWidgetItem(meta['file_format']))
+            self.table.setItem(row, 4, QTableWidgetItem(f"{meta['width']}x{meta['height']}"))
+            
+            # 5. Signal Profile (Col 5)
             best_match, is_fallback = self._get_best_color_match(path)
             profile_combo = create_ocio_combo(self.color_engine, best_match, is_fallback)
             profile_combo.setProperty("file_path", path)
-            self.table.setCellWidget(row, 4, profile_combo)
+            self.table.setCellWidget(row, 5, profile_combo)
             
             # Critical for the Reset button: store the path
             profile_combo.setProperty("file_path", path)
-            self.table.setCellWidget(row, 4, profile_combo)
+            self.table.setCellWidget(row, 5, profile_combo)
 
-            # 4. Corrected Delete Button
+            # 6. Status (Col 6)
+            self.table.setItem(row, 6, QTableWidgetItem("Ready"))
+
+            # 7. Delete Button (Col 7)
             del_btn = QToolButton()
             del_btn.setIcon(qta.icon('fa5s.times-circle', color='#888'))
             del_btn.setStyleSheet("border: none;")
-            
-            # Using a lambda with the button reference is safer here
             del_btn.clicked.connect(lambda: self._remove_row_logic(del_btn))
-            self.table.setCellWidget(row, 6, del_btn)
+            self.table.setCellWidget(row, 7, del_btn)
             
             self.process_btn.setEnabled(True)
 
@@ -406,35 +416,51 @@ class MainWindow(QMainWindow):
         self._launch_audit_process(audit_tasks)
 
     def _on_proceed_to_review(self):
-        """Gathers UI state and transitions to the ReviewWindow."""
+        """Surgically harvests UI state and triggers the Session."""
         
-        # 1. Update Global Session Settings
+        # 1. Package Global State into the Session
+        self.session.global_intent = "NEUTRALIZE" if self.radio_neutral.isChecked() else "MATCH GRADE"
+        self.session.global_display_space = self.display_space_combo.currentText()
         self.session.delta_e_tolerance = self.tol_spin.value()
-        self.session.results.clear() # Clear any previous run data
+        # Ensure the session knows which OCIO config we are using
+        self.session.ocio_config_path = str(settings.current_ocio_path)
 
-        # 2. Harvest the Table Rows
-        from core.models import AuditResult, AuditStatus
+        # 2. Clear and Re-populate the Results Map
+        self.session.results.clear()
+        file_paths = []
         
         for row in range(self.table.rowCount()):
-            combo = self.table.cellWidget(row, 4)
-            file_path = combo.property("file_path")
-            
-            # Create a real result object for this file
-            res = AuditResult(file_path=file_path)
-            res.input_space = combo.currentText()
-            res.display_space = self.display_space_combo.currentText()
-            res.analysis_intent = "NEUTRALIZE" if self.radio_neutral.isChecked() else "MATCH GRADE"
-            res.status = AuditStatus.READY
-            
-            # Add to the session 'Brain'
-            self.session.results[file_path] = res
+            combo = self.table.cellWidget(row, 5)
+            path = combo.property("file_path")
+            file_paths.append(path)
 
-        # 3. Launch the Review Window
-        from ui.review_window import ReviewWindow
+            # Package Per-File Data
+            res = AuditResult(file_path=path)
+            cam_text = self.table.item(row, 2).text()
+            # Basic split to put it back into make/model if needed
+            res.camera_make = cam_text.split(' ')[0]
+            res.format = self.table.item(row, 3).text() if self.table.item(row, 3) else "Unknown"
+            res.resolution = self.table.item(row, 4).text() if self.table.item(row, 4) else "0x0"
+            res.input_space = self.table.cellWidget(row, 5).currentText()
+            res.status = AuditStatus.IDLE
+            
+            self.session.results[path] = res
+
+        # 3. Fire the Worker
+        print(f"[SESSION] State Frozen. Starting Audit for {len(file_paths)} files...")
+        self.session.run_batch(file_paths)
+
+        # Session data test
+        print("\n--- SESSION DATA MAP VERIFICATION ---")
+        print(f"Global Intent: {self.session.global_intent}")
+        print(f"Global Display: {self.session.global_display_space}")
+        for path, res in self.session.results.items():
+            print(f"FILE: {Path(path).name} | INPUT: {res.input_space} | STATUS: {res.status}")
+        print("--------------------------------------\n")
+
+        # 4. Transition to Review Window
         self.review_win = ReviewWindow(self.session)
         self.review_win.show()
-        
-        # Hide setup window so the user stays in the current 'Step'
         self.hide()
 
     def _test_backend_rewiring(self):

@@ -65,10 +65,16 @@ class SessionManager(QObject):
     image_updated = Signal(str)        # file_path updated in results
     batch_finished = Signal()
 
-    def __init__(self, engine=None, sampler=None):
+    def __init__(self, color_engine=None, sampler=None):
         super().__init__()
-        self.engine = engine
+        self.color_engine = color_engine
         self.sampler = sampler
+
+        # --- GLOBAL STATE ---
+        self.ocio_config_path = ""
+        self.global_display_space = ""
+        self.global_intent = "neutralize"
+        self.delta_e_tolerance = 2.0
         
         # The Source of Truth: Mapping of file_path -> AuditResult
         self.results: Dict[str, AuditResult] = {}
